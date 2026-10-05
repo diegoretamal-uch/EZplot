@@ -109,8 +109,13 @@ volcano_tab = ui.nav_panel(
                 ui.input_radio_buttons("v_mode", "Gene labels",
                                        {"significant": "All significant", "top": "Top N",
                                         "custom": "Custom list", "none": "None"}, inline=True),
-                ui.panel_conditional("input.v_mode === 'top'",
-                                     ui.input_numeric("v_top", "N (by FDR)", 20, min=1, max=200)),
+                ui.panel_conditional(
+                    "input.v_mode === 'top'",
+                    ui.layout_columns(
+                        ui.input_numeric("v_top", "N", 20, min=1, max=200),
+                        ui.input_select("v_rank", "Ranked by",
+                                        {"fdr": "FDR (smallest)", "lfc": "|log₂FC| (largest)",
+                                         "distance": "Distance from origin"}))),
                 ui.panel_conditional("input.v_mode === 'custom'",
                                      ui.input_text_area("v_genes", "Genes (one per line or comma)",
                                                         rows=4)),
@@ -445,7 +450,8 @@ def server(input, output, session):
                  for g in [chunk.strip()] if g]
         return VolcanoParams(
             title=input.v_title(), fdr=input.v_fdr() or 0.05, lfc=input.v_lfc() or 0,
-            label_mode=input.v_mode(), label_top=input.v_top() or 20, label_genes=genes,
+            label_mode=input.v_mode(), label_top=input.v_top() or 20, label_rank=input.v_rank(),
+            label_genes=genes,
             neg_color=input.v_neg() or style.NEG, pos_color=input.v_pos() or style.POS,
             ns_color=input.v_ns() or style.NS, xlim=input.v_xlim() or 0,
             ymax=input.v_ymax() or 0, point_size=input.v_ptsize() or 70,

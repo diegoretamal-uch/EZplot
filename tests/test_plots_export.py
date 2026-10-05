@@ -64,3 +64,18 @@ def test_heatmap_font_sizes():
     assert leg.get_texts()[0].get_fontsize() == 11
     assert leg.get_title().get_fontsize() == 12
     plt.close(fig)
+
+
+def test_volcano_label_ranking():
+    import pandas as pd
+
+    from ezplot.plots.volcano import rank_genes
+    d = pd.DataFrame({"symbol": ["a", "b", "c"], "lfc": [-1.2, 6.0, 3.0],
+                      "padj": [1e-10, 1e-3, 1e-6], "y": [10.0, 3.0, 6.0]})
+    assert list(rank_genes(d, "fdr").symbol) == ["a", "c", "b"]
+    assert list(rank_genes(d, "lfc").symbol) == ["b", "c", "a"]
+    # scaled (x/6, y/10): b=(1.0,0.3) 1.09 > a=(0.2,1.0) 1.04 > c=(0.5,0.6) 0.61
+    assert list(rank_genes(d, "distance").symbol) == ["b", "a", "c"]
+    pr = project()
+    for by in ("fdr", "lfc", "distance"):
+        plt.close(pr.volcano(VolcanoParams(label_mode="top", label_top=5, label_rank=by)))

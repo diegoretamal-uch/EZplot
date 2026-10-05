@@ -21,6 +21,7 @@ class VolcanoParams:
     lfc: float = 1.0
     label_mode: str = "significant"     # significant / top / custom / none
     label_top: int = 20
+    label_rank: str = "fdr"             # top N by: fdr / lfc / distance
     label_genes: list = field(default_factory=list)
     neg_color: str = style.NEG
     pos_color: str = style.POS
@@ -126,7 +127,21 @@ def _labels(df, p):
     if p.label_mode == "custom":
         want = {g.strip().lower() for g in p.label_genes if g.strip()}
         return df[df["symbol"].str.lower().isin(want)]
-    sig = df[df["cls"] != "ns"].sort_values("padj")
+    sig = df[df["cls"] != "ns"]
     if p.label_mode == "top":
-        return sig.head(p.label_top)
-    return sig.head(60)                 # "significant": all of them, capped for legibility
+        return rank_genes(sig, p.label_rank).head(p.label_top)
+    return sig.sort_values("padj").head(60)   # "significant": all, capped for legibility
+
+
+def rank_genes(d, by="fdr"):
+    """Order genes for labelling: smallest FDR, largest |log2FC|, or farthest from the
+    origin as drawn (both axes scaled to their range, so neither dominates)."""
+    if by == "lfc":
+        key = -d["lfc"].abs()
+    elif by == "distance":
+        x = d["lfc"].abs() / (d["lfc"].abs().max() or 1)
+        y = d["y"] / (d["y"].max() or 1)
+        key = -(x ** 2 + y ** 2)
+    else:
+        key = d["padj"]
+    return d.assign(_k=key).sort_values(["_k", "padj"], kind="mergesort").drop(columns="_k")
