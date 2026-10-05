@@ -77,6 +77,10 @@ def batch(a):
 
 
 def main(argv=None):
+    # Windows consoles default to cp1252, which can't print "log₂FC"
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(prog="ezplot", description=__doc__)
     sub = ap.add_subparsers(dest="cmd")
     ap.add_argument("--port", type=int, default=None)
