@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # the real launcher, uv bootstrap included, on a runner without uv
+      - name: Launcher (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: start-windows.bat --check
+      - name: Launcher (macOS)
+        if: runner.os == 'macOS'
+        run: ./start-mac.command --check
+      - name: Launcher (Linux)
+        if: runner.os == 'Linux'
+        run: ./start-linux.sh --check
+      - uses: astral-sh/setup-uv@v6
+      - name: Batch render the example data
+        run: uv run --frozen --no-dev ezplot batch --de ezplot/example/example_DE_matrix.csv --heatmap ezplot/example/example_DEG_Heatmap_Data.csv --collections hallmarks --formats png,pdf,svg,tiff --out out
+      - name: Tests
+        run: uv run --frozen pytest -q

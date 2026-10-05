@@ -1,0 +1,14 @@
+Gene sets in this folder come from the Molecular Signatures Database (MSigDB) v2024.1,
+https://www.gsea-msigdb.org/gsea/msigdb, distributed under the Creative Commons
+Attribution 4.0 International License (CC BY 4.0).
+
+  mh.all / h.all        Hallmark gene sets (mouse / human)
+  m5.go.* / c5.go.*     Gene Ontology BP, MF, CC (mouse / human)
+
+Files are gzip-compressed but otherwise unchanged. Please cite MSigDB when you publish:
+  Liberzon A, et al. The Molecular Signatures Database Hallmark Gene Set Collection.
+    Cell Syst. 2015;1(6):417-425.
+  Castanza AS, et al. Extending support for mouse data in the Molecular Signatures
+    Database (MSigDB). Nat Methods. 2023;20:1619-1620.
+  Gene Ontology Consortium. The Gene Ontology knowledgebase in 2023. Genetics.
+    2023;224(1):iyad031.
