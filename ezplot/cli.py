@@ -36,7 +36,7 @@ def batch(a):
     from .project import Project
 
     pr = Project()
-    for f in [a.de, a.heatmap, a.pathways, a.gmt]:
+    for f in [a.de, a.heatmap, a.gmt]:
         if f:
             kind = pr.load(f, Path(f).name)
             print(f"  {Path(f).name}: {kind}")
@@ -89,7 +89,6 @@ def main(argv=None):
     b = sub.add_parser("batch", help="render all plots without the app")
     b.add_argument("--de", help="iDEP DE results matrix (csv)")
     b.add_argument("--heatmap", help="iDEP DEG_Heatmap_Data.csv")
-    b.add_argument("--pathways", help="iDEP sig_pathways*.csv (cross-check)")
     b.add_argument("--gmt", help="custom gene sets (.gmt)")
     b.add_argument("--control", help="control group name (default: auto)")
     b.add_argument("--treatment", help="treatment group name (default: the other group)")

@@ -53,7 +53,6 @@ takes about a minute instead of 20 s.
 |---|---|---|
 | **DE results matrix**: has columns like `CTRL-TRT_log2FC`, `CTRL-TRT_adjPval` and one column per sample | *DEG* tab → download the full results table | Volcano, GSEA |
 | **`DEG_Heatmap_Data.csv`** | *DEG* tab → heatmap → download data | Heatmap |
-| `sig_pathways*.csv` *(optional)* | *Pathway* tab → download | Marks gene sets iDEP also found (†) |
 | a `.gmt` file *(optional)* | MSigDB, Enrichr, your own | Extra gene-set collection |
 
 No data at hand? Click **Try it with example data** in the app. The example is a synthetic
@@ -108,7 +107,7 @@ Render everything without opening the app, which is handy for reproducing figure
 
 ```bash
 uv run ezplot batch --de DE_matrix.csv --heatmap DEG_Heatmap_Data.csv \
-    --pathways sig_pathways.csv --control-label Control --treatment-label Treated \
+    --control-label Control --treatment-label Treated \
     --collections hallmarks,go_bp --formats png,pdf --dpi 600 --width-mm 183 --out figures/
 ```
 

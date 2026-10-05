@@ -4,7 +4,7 @@ iDEP files handled:
   de_matrix  - the DEG tab's full results download: symbol, ensembl_ID, ..., "<A>-<B>_log2FC",
                "<A>-<B>_adjPval", then per-sample processed (log) expression
   heatmap    - DEG_Heatmap_Data.csv: rows = genes, columns = samples, row-centred values
-  pathways   - sig_pathways*.csv from the Pathway tab (only used as a cross-check)
+  pathways   - sig_pathways*.csv from the Pathway tab (recognised, not needed: its "NES" is ES)
   gmt        - user gene-set collection
 
 The sign of iDEP's log2FC column is not reliably given by its name ("A-B_log2FC" can be
@@ -87,7 +87,7 @@ def detect_kind(df, name=""):
 KIND_LABELS = {
     "de_matrix": "DE matrix (volcano + GSEA)",
     "heatmap": "Heatmap data",
-    "pathways": "iDEP pathways (cross-check)",
+    "pathways": "iDEP pathway export: not needed, EZplot recomputes GSEA",
     "deg_list": "DEG gene list (not needed: load the full DE matrix instead)",
     "gmt": "Custom gene sets (.gmt)",
     "unknown": "Unrecognised file",
@@ -234,24 +234,6 @@ def parse_heatmap(df):
         raise InputError("Heatmap file needs gene rows and at least two numeric sample columns.")
     x.index = [clean_symbol(str(i)) for i in x.index]
     return x
-
-
-# ── iDEP pathway table (cross-check only) ─────────────────────
-
-def pathway_key(name):
-    """Normalise MSigDB ('GOBP_FOO_BAR') and iDEP ('Foo bar ') names to one key."""
-    s = re.sub(r"^(HALLMARK|GOBP|GOMF|GOCC)[_ ]", "", str(name).strip().upper())
-    return re.sub(r"[^A-Z0-9]+", "_", s).strip("_")
-
-
-def parse_pathways(df):
-    if "adj.Pval" not in df.columns:
-        return pd.DataFrame(columns=["pathway", "key", "adj.Pval"])
-    name_col = next((c for c in df.columns if "pathway" in str(c).lower()), df.columns[2])
-    out = pd.DataFrame({"pathway": df[name_col].astype(str).str.strip(),
-                        "adj.Pval": pd.to_numeric(df["adj.Pval"], errors="coerce")})
-    out["key"] = out["pathway"].map(pathway_key)
-    return out
 
 
 # ── gene sets ─────────────────────────────────────────────────

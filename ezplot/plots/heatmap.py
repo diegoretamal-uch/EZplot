@@ -31,6 +31,8 @@ class HeatmapParams:
     gene_fontsize: float = 15
     sample_fontsize: float = 14
     title_fontsize: float = 20
+    cbar_fontsize: float = 13      # colour-scale label; ticks one point smaller
+    legend_fontsize: float = 13    # legend entries; title one point larger
     width: float = 10.5
     height: float = 0.0            # 0 = automatic from the number of genes
     legend_title: str = "Condition"
@@ -109,8 +111,8 @@ def plot_heatmap(x, sample_roles, role_labels, role_colors, p=None):
     cb = fig.colorbar(mesh, cax=ax_cb)
     cb.set_ticks(np.linspace(-p.vlim, p.vlim, 5) if p.vlim == 2 else
                  [-p.vlim, 0, p.vlim])
-    cb.ax.tick_params(labelsize=12)
-    cb.set_label("Row z-score" if p.zscore else "Centred log$_2$ expression", fontsize=13,
+    cb.ax.tick_params(labelsize=p.cbar_fontsize - 1)
+    cb.set_label("Row z-score" if p.zscore else "Centred log$_2$ expression", fontsize=p.cbar_fontsize,
                  labelpad=10)
     cb.outline.set_visible(False)
 
@@ -118,7 +120,8 @@ def plot_heatmap(x, sample_roles, role_labels, role_colors, p=None):
                  x=left + width / 2, y=0.955)
     present = [r for r in role_labels if r in roles]
     fig.legend(handles=[Patch(color=role_colors[r], label=role_labels[r]) for r in present],
-               title=p.legend_title, title_fontproperties={"weight": "bold", "size": 14},
-               fontsize=13, loc="upper left", bbox_to_anchor=(0.76, 0.93), frameon=False,
+               title=p.legend_title,
+               title_fontproperties={"weight": "bold", "size": p.legend_fontsize + 1},
+               fontsize=p.legend_fontsize, loc="upper left", bbox_to_anchor=(0.76, 0.93), frameon=False,
                handlelength=1.4, handleheight=0.9)
     return fig

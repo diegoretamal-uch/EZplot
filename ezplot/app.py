@@ -29,6 +29,13 @@ CSS = """
 input[type=color].ez-color{width:2.6rem;height:1.9rem;padding:0;border:none;background:none;
   vertical-align:middle}
 .ez-colors label{margin-right:.4rem}
+.ez-help{max-width:52rem;line-height:1.7;padding:.5rem .5rem 2rem}
+.ez-help h3{margin:2rem 0 .9rem;font-size:1.3rem}.ez-help h3:first-child{margin-top:.5rem}
+.ez-help p{margin-bottom:1.1rem}
+.ez-help table{margin:.4rem 0 1.4rem;border-collapse:collapse;width:100%}
+.ez-help th,.ez-help td{padding:.6rem .8rem;border-bottom:1px solid var(--bs-border-color);
+  vertical-align:top}
+.ez-help th{background:var(--bs-tertiary-bg)}
 """
 JS = """
 $(document).on('input change', 'input[type=color].ez-color', function(e){
@@ -148,8 +155,12 @@ heatmap_tab = ui.nav_panel(
                                  "PiYG_r": "Pink-green"}),
                 ui.input_text("h_legend", "Legend title", HeatmapParams.legend_title),
                 ui.layout_columns(
+                    ui.input_numeric("h_tfs", "Title font", 20, min=6, max=40),
+                    ui.input_numeric("h_cfs", "Colour-scale font", 13, min=4, max=30)),
+                ui.layout_columns(
                     ui.input_numeric("h_gfs", "Gene font", 15, min=4, max=30),
                     ui.input_numeric("h_sfs", "Sample font", 14, min=4, max=30)),
+                ui.input_numeric("h_lfs", "Legend font", 13, min=4, max=30),
                 size_inputs("h", HeatmapParams.width, 0),
             ),
             open=True,
@@ -179,13 +190,11 @@ gsea_tab = ui.nav_panel(
                 ui.input_radio_buttons("g_dir", "Direction",
                                        {"both": "Both", "positive": "Positive NES",
                                         "negative": "Negative NES"}, inline=True),
-                ui.input_checkbox("g_idep", "Mark sets also found by iDEP (†)", True),
             ),
             ui.accordion_panel(
                 "Design",
                 ui.input_text("g_title", "Title", GseaDotParams.title),
                 ui.input_text("g_sub", "Subtitle", GseaDotParams.subtitle),
-                ui.input_text("g_foot", "Footnote (empty = automatic)", ""),
                 ui.layout_columns(
                     ui.input_numeric("g_wrap", "Wrap names at", 50, min=15, max=120),
                     ui.input_numeric("g_qmax", "Colour max −log₁₀q", 4, min=2, max=20)),
@@ -239,13 +248,12 @@ export_tab = ui.nav_panel(
 
 help_tab = ui.nav_panel(
     "Help",
-    ui.markdown(f"""
+    ui.div(ui.markdown(f"""
 ### What to download from iDEP
 | EZplot needs | Where in iDEP | Used for |
 |---|---|---|
 | **DE results matrix** (has columns like `CTRL-TRT_log2FC`, `CTRL-TRT_adjPval` and one column per sample) | *DEG* tab → download the full results table | Volcano, GSEA |
 | **DEG_Heatmap_Data.csv** | *DEG* tab → heatmap → download data | Heatmap |
-| `sig_pathways*.csv` *(optional)* | *Pathway* tab → download | Marks sets iDEP also found |
 | a `.gmt` file *(optional)* | MSigDB, Enrichr, … | Extra gene-set collection |
 
 Drop all files at once; EZplot recognises each one by its columns.
@@ -263,7 +271,7 @@ against {genesets.VERSION} (Hallmark, GO BP/MF/CC; mouse and human), with the sa
 as fgsea. NES agree with fgsea to about 0.01.
 
 EZplot {__version__}
-"""),
+"""), class_="ez-help"),
 )
 
 app_ui = ui.page_sidebar(
@@ -296,7 +304,7 @@ def server(input, output, session):
         for path, name in items:
             try:
                 kind = proj.load(path, name)
-                err = None if kind not in ("unknown", "deg_list") else io.KIND_LABELS[kind]
+                err = None if kind not in ("unknown", "deg_list", "pathways") else io.KIND_LABELS[kind]
             except io.InputError as e:
                 kind, err = "unknown", str(e)
             out = [x for x in out if x[0] != name] + [(name, kind, err)]
@@ -458,6 +466,8 @@ def server(input, output, session):
             cmap=_cmap(input.h_cmap()), cluster_rows=input.h_crow(), cluster_cols=input.h_ccol(),
             show_genes=input.h_genes(), italic_genes=input.h_ital(),
             gene_fontsize=input.h_gfs() or 15, sample_fontsize=input.h_sfs() or 14,
+            title_fontsize=input.h_tfs() or 20, cbar_fontsize=input.h_cfs() or 13,
+            legend_fontsize=input.h_lfs() or 13,
             width=input.h_w() or 10.5, height=input.h_h() or 0, legend_title=input.h_legend())
 
     @render.ui
@@ -511,7 +521,7 @@ def server(input, output, session):
 
     def gsea_params():
         return GseaDotParams(
-            title=input.g_title(), subtitle=input.g_sub(), footnote=input.g_foot(),
+            title=input.g_title(), subtitle=input.g_sub(),
             q=input.g_q() or 0.05, top=input.g_top() or 10, qmax=input.g_qmax() or 4,
             wrap=input.g_wrap() or 50, cmap=input.g_cmap(), width=input.g_w() or 10,
             height=input.g_h() or 0, direction=input.g_dir())
@@ -531,13 +541,7 @@ def server(input, output, session):
         if key is None:
             return empty("Running GSEA… (Hallmarks: a few seconds; GO Biological Process: "
                          "up to a minute). Results are kept, so switching back is instant.")
-        saved = proj.idep_pathways
-        if not input.g_idep():
-            proj.idep_pathways = None
-        try:
-            return fig_img(proj.gsea_fig(key, gsea_params()))
-        finally:
-            proj.idep_pathways = saved
+        return fig_img(proj.gsea_fig(key, gsea_params()))
 
     @render.data_frame
     def gsea_table():

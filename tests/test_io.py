@@ -40,10 +40,3 @@ def test_clean_symbol():
     assert io.clean_symbol("Gm31520ENSMUSG00000121703") == "Gm31520"
     assert io.clean_symbol("ENSMUSG00000121703") == "ENSMUSG00000121703"
     assert io.clean_symbol("Actb") == "Actb"
-
-
-def test_pathway_key_matches_msigdb_and_idep():
-    assert io.pathway_key("HALLMARK_TNFA_SIGNALING_VIA_NFKB") == \
-        io.pathway_key("HALLMARK TNFA SIGNALING VIA NFKB")
-    assert io.pathway_key("GOBP_TYPE_B_PANCREATIC_CELL_PROLIFERATION") == \
-        io.pathway_key("Type b pancreatic cell proliferation ")

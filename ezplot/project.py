@@ -24,7 +24,6 @@ class GseaSettings:
 class Project:
     de: io.DEMatrix = None
     heatmap: pd.DataFrame = None
-    idep_pathways: pd.DataFrame = None
     custom_sets: dict = None
     custom_name: str = "Custom gene sets"
     groups: dict = field(default_factory=dict)       # sample -> group (DE matrix + heatmap)
@@ -55,8 +54,6 @@ class Project:
         elif kind == "heatmap":
             self.heatmap = io.parse_heatmap(df)
             self._refresh_groups()
-        elif kind == "pathways":
-            self.idep_pathways = io.parse_pathways(df)
         return kind
 
     def set_de(self, de):
@@ -150,12 +147,6 @@ class Project:
     def gsea_done(self, key):
         return self.de is not None and self._cache_key(key) in self._gsea_cache
 
-    def gsea_footnote(self, key):
-        src = genesets.VERSION if key != "custom" else self.custom_name
-        s = self.gsea
-        return (f"Preranked GSEA on DESeq2 log$_2$FC from iDEP ({self.labels[1]} vs "
-                f"{self.labels[0]}) · {src} · set size {s.min_size}–{s.max_size}")
-
     # ── figures ───────────────────────────────────────────────
     def volcano(self, p=None):
         p = p or VolcanoParams()
@@ -172,10 +163,5 @@ class Project:
     def gsea_fig(self, key, p=None):
         res = self.run_gsea(key)
         title, ylabel = self.collections()[key]
-        p = p or GseaDotParams()
-        if not p.footnote:
-            p = GseaDotParams(**{**asdict(p), "footnote": self.gsea_footnote(key)})
-        idep = set(self.idep_pathways["key"]) if self.idep_pathways is not None else None
         c, t = self.labels
-        return plot_gsea_dot(res, title, ylabel, c, t, p, idep_keys=idep,
-                             key_func=io.pathway_key)
+        return plot_gsea_dot(res, title, ylabel, c, t, p or GseaDotParams())

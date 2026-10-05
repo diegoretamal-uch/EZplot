@@ -12,14 +12,10 @@ from matplotlib.colors import Normalize
 
 from .. import style
 
-IDEP_MARK = "†"
-
-
 @dataclass
 class GseaDotParams:
     title: str = "{collection} — FDR q < {q:g}"
     subtitle: str = "Positive NES: {treatment} · Negative NES: {control}"
-    footnote: str = ""
     q: float = 0.05
     top: int = 10
     qmax: float = 4.0
@@ -48,9 +44,8 @@ def select(res, p):
     return sig.head(p.top).sort_values("NES")   # res is already sorted by padj, |NES|
 
 
-def plot_gsea_dot(res, collection_title, ylabel, control, treatment, p=None,
-                  idep_keys=None, key_func=None):
-    """res: engine output. idep_keys: optional set of normalised iDEP pathway names."""
+def plot_gsea_dot(res, collection_title, ylabel, control, treatment, p=None):
+    """res: engine output (ezplot.gsea.engine.prerank)."""
     p = p or GseaDotParams()
     style.setup()
     sig = select(res, p)
@@ -69,7 +64,6 @@ def plot_gsea_dot(res, collection_title, ylabel, control, treatment, p=None,
     fig.text(0.5, 1 - 0.62 / height, p.subtitle.format(treatment=treatment, control=control),
              ha="center", va="top", fontsize=12.5, color="#333333")
 
-    marked = 0
     lim = max(2.6, np.ceil((sig["NES"].abs().max() if n else 0) * 5 + 1.5) / 5)
     ax.set_xlim(-lim, lim)
     ax.axvline(0, color=style.ZERO_LINE, ls="--", lw=1.8, zorder=1)
@@ -87,13 +81,7 @@ def plot_gsea_dot(res, collection_title, ylabel, control, treatment, p=None,
         logq = np.minimum(-np.log10(sig["padj"].clip(lower=1e-300)), p.qmax)
         ax.scatter(sig["NES"], y, s=p.size_k * sig["size"], c=logq, cmap=p.cmap,
                    norm=norm, edgecolors="none", zorder=3)
-        labels = []
-        for name in sig["pathway"]:
-            lab = style.pretty_name(name, p.wrap)
-            if idep_keys and key_func and key_func(name) in idep_keys:
-                lab += f" {IDEP_MARK}"
-                marked += 1
-            labels.append(lab)
+        labels = [style.pretty_name(name, p.wrap) for name in sig["pathway"]]
         ax.set_yticks(y, labels)
         if any("\n" in l for l in labels):
             ax.tick_params(axis="y", labelsize=11)
@@ -121,10 +109,4 @@ def plot_gsea_dot(res, collection_title, ylabel, control, treatment, p=None,
                  f"($q$ < 10$^{{-{p.qmax:g}}}$ shown as 10$^{{-{p.qmax:g}}}$)",
                  fontsize=12.5, labelpad=8)
 
-    foot = p.footnote
-    if marked:
-        foot = (foot + "   " if foot else "") + f"{IDEP_MARK} also reported in iDEP's pathway export"
-    if foot:
-        fig.text(0.5, 0.18 / height, foot, ha="center", va="bottom", fontsize=9,
-                 color=style.MUTED, wrap=True)
     return fig
