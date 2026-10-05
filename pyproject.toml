@@ -1,6 +1,6 @@
 [project]
 name = "ezplot"
-version = "0.1.1"
+version = "0.1.2"
 description = "Publication-quality volcano, heatmap and GSEA plots from iDEP output"
 readme = "README.md"
 requires-python = ">=3.11"
