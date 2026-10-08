@@ -154,6 +154,7 @@ heatmap_tab = ui.nav_panel(
                                   ui.input_checkbox("h_ccol", "Cluster samples", True)),
                 ui.layout_columns(ui.input_checkbox("h_genes", "Show gene names", True),
                                   ui.input_checkbox("h_ital", "Italic genes", True)),
+                ui.input_checkbox("h_border", "Grey borders around cells", True),
                 ui.input_select("h_cmap", "Colour map",
                                 {"RdYlBu_r": "Red-yellow-blue (template)", "RdBu_r": "Red-blue",
                                  "vlag": "Blue-white-red (soft)", "viridis": "Viridis",
@@ -470,7 +471,7 @@ def server(input, output, session):
         return HeatmapParams(
             title=input.h_title(), zscore=input.h_z(), vlim=input.h_vlim() or 2,
             cmap=_cmap(input.h_cmap()), cluster_rows=input.h_crow(), cluster_cols=input.h_ccol(),
-            show_genes=input.h_genes(), italic_genes=input.h_ital(),
+            show_genes=input.h_genes(), italic_genes=input.h_ital(), cell_borders=input.h_border(),
             gene_fontsize=input.h_gfs() or 15, sample_fontsize=input.h_sfs() or 14,
             title_fontsize=input.h_tfs() or 20, cbar_fontsize=input.h_cfs() or 13,
             legend_fontsize=input.h_lfs() or 13,

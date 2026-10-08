@@ -28,6 +28,7 @@ class HeatmapParams:
     metric: str = "euclidean"
     show_genes: bool = True
     italic_genes: bool = True
+    cell_borders: bool = True      # grey lines between cells (and between samples in the bar)
     gene_fontsize: float = 15
     sample_fontsize: float = 14
     title_fontsize: float = 20
@@ -73,8 +74,9 @@ def plot_heatmap(x, sample_roles, role_labels, role_colors, p=None):
     ax_rd = fig.add_axes([0.01, bottom, left - 0.015, top - bottom])
     ax_cb = fig.add_axes([0.93, bottom + 0.02, 0.018, 0.50])
 
+    # without borders, edges take the cell colour so PDF/SVG viewers show no hairline seams
     mesh = ax_h.pcolormesh(z.to_numpy(), cmap=p.cmap, vmin=-p.vlim, vmax=p.vlim,
-                           edgecolors="#aaaaaa", linewidth=0.5)
+                           edgecolors="#aaaaaa" if p.cell_borders else "face", linewidth=0.5)
     ax_h.set_xlim(0, m)
     ax_h.set_ylim(n, 0)
     ax_h.set_xticks(np.arange(m) + 0.5, z.columns, rotation=90, fontsize=p.sample_fontsize)
@@ -93,7 +95,8 @@ def plot_heatmap(x, sample_roles, role_labels, role_colors, p=None):
     colors = [role_colors.get(r, "#bbbbbb") for r in roles]
     ax_c.imshow([[plt.matplotlib.colors.to_rgb(c) for c in colors]], aspect="auto",
                 extent=(0, m, 0, 1))
-    ax_c.vlines(np.arange(1, m), 0, 1, color="#aaaaaa", lw=0.5)
+    if p.cell_borders:
+        ax_c.vlines(np.arange(1, m), 0, 1, color="#aaaaaa", lw=0.5)
     ax_c.set_xticks([])
     ax_c.set_yticks([])
     for s in ax_c.spines.values():

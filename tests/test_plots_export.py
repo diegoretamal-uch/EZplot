@@ -37,6 +37,15 @@ def test_raster_width_and_dpi():
     plt.close(fig)
 
 
+def test_heatmap_without_cell_borders():
+    pr = project()
+    fig = pr.heatmap_fig(HeatmapParams(cell_borders=False))
+    mesh = fig.axes[0].collections[0]
+    assert (mesh.get_edgecolor() == mesh.get_facecolor()).all()   # edges blend into cells
+    assert not fig.axes[1].collections                              # no separators in the bar
+    plt.close(fig)
+
+
 def test_volcano_label_modes_and_empty_gsea():
     pr = project()
     for mode in ("significant", "top", "custom", "none"):
