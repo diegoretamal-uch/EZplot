@@ -33,7 +33,7 @@ def batch(a):
     import matplotlib.pyplot as plt
 
     from . import export
-    from .project import Project
+    from .project import RANK_LABELS, Project
 
     pr = Project()
     for f in [a.de, a.heatmap, a.gmt]:
@@ -45,11 +45,13 @@ def batch(a):
         pr.treatment = a.treatment or next(g for g in pr.group_names if g != a.control)
     if a.species:
         pr.species = a.species
+    pr.gsea.rank_by = a.rank
     if a.flip:
         pr.up_group = next(g for g in pr.group_names if g != pr.up_group)
     pr.control_label, pr.treatment_label = a.control_label, a.treatment_label
     if pr.de is not None:
         print(f"  {pr.direction_sentence()}  (auto-check agreement {pr.direction_confidence:.0%})")
+        print(f"  GSEA ranking: {RANK_LABELS[pr.rank_metric]}")
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -96,6 +98,9 @@ def main(argv=None):
     b.add_argument("--treatment-label")
     b.add_argument("--flip", action="store_true", help="override the auto-detected sign")
     b.add_argument("--species", choices=["mouse", "human"])
+    b.add_argument("--rank", choices=["stat", "lfc"], default="stat",
+                   help="GSEA ranking: DESeq2 Wald stat (needs the full DESeq2 export; "
+                        "falls back to log2FC) or log2FC")
     b.add_argument("--collections", help="comma list: hallmarks,go_bp,go_mf,go_cc,custom")
     b.add_argument("--formats", default="png,pdf")
     b.add_argument("--dpi", type=int, default=300)

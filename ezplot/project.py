@@ -18,6 +18,10 @@ class GseaSettings:
     max_size: int = 500
     nperm: int = 1000
     seed: int = 42
+    rank_by: str = "stat"      # "stat" (DESeq2 Wald stat, when the file has it) or "lfc"
+
+
+RANK_LABELS = {"stat": "DESeq2 Wald stat", "lfc": "log₂FC"}
 
 
 @dataclass
@@ -51,6 +55,8 @@ class Project:
         kind = io.detect_kind(df, name)
         if kind == "de_matrix":
             self.set_de(io.parse_de_matrix(df))
+            if self.de.has_stat:
+                kind = "de_matrix_stat"
         elif kind == "heatmap":
             self.heatmap = io.parse_heatmap(df)
             self._refresh_groups()
@@ -100,11 +106,12 @@ class Project:
 
     # ── derived data ──────────────────────────────────────────
     def oriented_genes(self):
-        """DE genes with `lfc` positive = higher in treatment."""
+        """DE genes with `lfc` (and `stat`) positive = higher in treatment."""
         if self.de is None:
             return None
         sign = 1.0 if self.up_group == self.treatment else -1.0
-        return self.de.genes.assign(lfc=self.de.genes["raw_lfc"] * sign)
+        return self.de.genes.assign(lfc=self.de.genes["raw_lfc"] * sign,
+                                    stat=self.de.genes["raw_stat"] * sign)
 
     def direction_sentence(self):
         if self.de is None:
@@ -112,9 +119,16 @@ class Project:
         c, t = self.labels
         return f"Positive log₂FC / NES = higher in {t} than in {c}"
 
+    @property
+    def rank_metric(self):
+        """What GSEA actually ranks by: the stat only if asked for and present in the file."""
+        if self.gsea.rank_by == "stat" and self.de is not None and self.de.has_stat:
+            return "stat"
+        return "lfc"
+
     def ranking(self):
         g = self.oriented_genes()
-        return pd.Series(g["lfc"].to_numpy(), index=g["symbol"].to_numpy())
+        return pd.Series(g[self.rank_metric].to_numpy(), index=g["symbol"].to_numpy())
 
     def collections(self):
         """Available GSEA collections: key -> (title, y label)."""
@@ -133,7 +147,7 @@ class Project:
     def _cache_key(self, key):
         r = self.ranking()
         h = hashlib.sha1(pd.util.hash_pandas_object(r, index=True).values.tobytes())
-        h.update(repr((key, self.species, asdict(self.gsea))).encode())
+        h.update(repr((key, self.species, asdict(self.gsea), self.rank_metric)).encode())
         return h.hexdigest()
 
     def run_gsea(self, key, progress=None):

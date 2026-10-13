@@ -52,6 +52,7 @@ takes about a minute instead of 20 s.
 | EZplot needs | Where in iDEP | Used for |
 |---|---|---|
 | **DE results matrix**: has columns like `CTRL-TRT_log2FC`, `CTRL-TRT_adjPval` and one column per sample | *DEG* tab → download the full results table | Volcano, GSEA |
+| or the **full DESeq2 results** (`Results_full_DESeq2.csv`): the same table plus `_lfcSE`, `_stat` and `_pvalue` per comparison | [SalmonFlow](https://github.com/diegoretamal-uch/salmonflow)'s iDEP, *DEG* tab → **Full DESeq2 results** (DESeq2 method only) | Volcano, GSEA ranked by the Wald stat (recommended) |
 | **`DEG_Heatmap_Data.csv`** | *DEG* tab → heatmap → download data | Heatmap |
 | a `.gmt` file *(optional)* | MSigDB, Enrichr, your own | Extra gene-set collection |
 
@@ -82,22 +83,29 @@ The "NES" column in iDEP's `sig_pathways*.csv` actually contains the raw enrichm
 (ES), and the true NES cannot be recovered from that file. EZplot therefore runs preranked
 GSEA itself:
 
-- ranking: DESeq2 log2FC from iDEP's DE matrix (all genes, oriented treatment vs control)
+- ranking: all genes, oriented treatment vs control, by the **DESeq2 Wald stat**
+  (log2FC / lfcSE) when the file has it, otherwise by DESeq2 log2FC. Stock iDEP drops the
+  stat; SalmonFlow's patched iDEP exports it in *Full DESeq2 results*. The stat weighs each
+  fold change by its uncertainty, so noisy low-count genes don't crowd the ends of the
+  ranking. *GSEA settings → Rank genes by* switches between the two, and the GSEA tab says
+  which one was used.
 - gene sets: MSigDB v2024.1 Hallmark and GO BP/MF/CC, mouse and human (bundled), or your `.gmt`
 - statistics as in fgsea: weighted KS enrichment score, NES against 1000 size-matched
   random gene sets, very small p-values refined by adaptive multilevel splitting, and
   Benjamini-Hochberg FDR.
 
 On real RNA-seq test data EZplot matched `fgsea` with a median |ΔNES| of 0.01 and a log10
-p-value correlation of 0.99 or higher. The top-10 pathways were the same 7-10 of 10 per
+p-value correlation of 0.99 or higher, with either ranking. The top-10 pathways were the same 7-10 of 10 per
 collection, with the rest differing among sets whose p-values are within Monte Carlo error
 of each other. Results are reproducible for a given random seed (*GSEA settings*).
 
 **Methods text you can adapt:** *Gene set enrichment analysis was performed on genes ranked by
-DESeq2 log2 fold change (iDEP) using EZplot v0.1, which implements the fgsea preranked
+the DESeq2 Wald statistic (iDEP) using EZplot v0.1, which implements the fgsea preranked
 algorithm (1,000 permutations; multilevel splitting for small p-values), with MSigDB v2024.1
 Hallmark and Gene Ontology collections (15-500 genes per set). Gene sets with FDR q < 0.05
 were considered significant.*
+*(If GSEA ranked by log2FC, say "DESeq2 log2 fold change" instead; the GSEA tab and
+`ezplot_parameters.json` record which ranking was used.)*
 
 ---
 
@@ -111,6 +119,7 @@ uv run ezplot batch --de DE_matrix.csv --heatmap DEG_Heatmap_Data.csv \
     --collections hallmarks,go_bp --formats png,pdf --dpi 600 --width-mm 183 --out figures/
 ```
 
+`--rank lfc` ranks GSEA by log2FC even when the file has the Wald stat (default `--rank stat`).
 `uv run ezplot batch --help` lists every option.
 
 ## Updating

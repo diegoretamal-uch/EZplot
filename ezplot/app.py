@@ -14,7 +14,7 @@ from . import __version__, export, genesets, io, style  # noqa: E402
 from .plots.gsea_dot import GseaDotParams  # noqa: E402
 from .plots.heatmap import HeatmapParams  # noqa: E402
 from .plots.volcano import VolcanoParams  # noqa: E402
-from .project import GseaSettings, Project  # noqa: E402
+from .project import RANK_LABELS, GseaSettings, Project  # noqa: E402
 
 EXAMPLE = Path(__file__).parent / "example"
 CSS = """
@@ -180,6 +180,7 @@ gsea_tab = ui.nav_panel(
     ui.layout_columns(
         ui.div(
             ui.input_select("g_coll", "Collection", {}),
+            ui.output_ui("gsea_rank_note"),
             ui.output_ui("gsea_out"),
             download_row("dl_gsea"),
             ui.hr(),
@@ -211,6 +212,10 @@ gsea_tab = ui.nav_panel(
             ),
             ui.accordion_panel(
                 "GSEA settings",
+                ui.input_radio_buttons("g_rank", "Rank genes by",
+                                       {"stat": "DESeq2 Wald stat", "lfc": "log₂FC"}),
+                ui.p("The Wald stat needs the \"Full DESeq2 results\" file from SalmonFlow's "
+                     "iDEP; with other files GSEA ranks by log₂FC.", class_="ez-small"),
                 ui.layout_columns(
                     ui.input_numeric("g_min", "Min set size", 15, min=1),
                     ui.input_numeric("g_max", "Max set size", 500, min=5)),
@@ -259,6 +264,7 @@ help_tab = ui.nav_panel(
 | EZplot needs | Where in iDEP | Used for |
 |---|---|---|
 | **DE results matrix** (has columns like `CTRL-TRT_log2FC`, `CTRL-TRT_adjPval` and one column per sample) | *DEG* tab → download the full results table | Volcano, GSEA |
+| or the **full DESeq2 results** (`Results_full_DESeq2.csv`: the same plus `_lfcSE`, `_stat`, `_pvalue`) | SalmonFlow's iDEP, *DEG* tab → *Full DESeq2 results* | Volcano, GSEA ranked by Wald stat |
 | **DEG_Heatmap_Data.csv** | *DEG* tab → heatmap → download data | Heatmap |
 | a `.gmt` file *(optional)* | MSigDB, Enrichr, … | Extra gene-set collection |
 
@@ -272,9 +278,14 @@ file. Only if the file has no sample columns does it ask you.
 
 ### GSEA and NES
 iDEP's exported "NES" column actually holds the raw enrichment score (ES), and NES cannot be
-recovered from that file. EZplot therefore re-runs preranked GSEA on the full log2FC ranking
-against {genesets.VERSION} (Hallmark, GO BP/MF/CC; mouse and human), with the same statistics
-as fgsea. NES agree with fgsea to about 0.01.
+recovered from that file. EZplot therefore re-runs preranked GSEA on all genes against
+{genesets.VERSION} (Hallmark, GO BP/MF/CC; mouse and human), with the same statistics as
+fgsea. NES agree with fgsea to about 0.01.
+
+Genes are ranked by the DESeq2 Wald stat (log2FC / lfcSE) when the file has it, which is
+the case for the *Full DESeq2 results* download of SalmonFlow's iDEP. The stat accounts for
+how certain each fold change is, so noisy low-count genes do not dominate the ends of the
+ranking. Files without it are ranked by log2FC. *GSEA settings → Rank genes by* switches.
 
 EZplot {__version__}
 """), class_="ez-help"),
@@ -500,7 +511,8 @@ def server(input, output, session):
 
     def gsea_settings():
         return GseaSettings(min_size=input.g_min() or 15, max_size=input.g_max() or 500,
-                            nperm=input.g_nperm() or 1000, seed=input.g_seed() or 0)
+                            nperm=input.g_nperm() or 1000, seed=input.g_seed() or 0,
+                            rank_by=input.g_rank())
 
     def run_collection(key):
         with ui.Progress(min=0, max=1) as p:
@@ -541,9 +553,20 @@ def server(input, output, session):
         return key if key and proj.gsea_done(key) else None
 
     @render.ui
+    def gsea_rank_note():
+        rev()
+        if proj.de is None:
+            return None
+        note = f"Genes ranked by {RANK_LABELS[proj.rank_metric]}"
+        if proj.gsea.rank_by == "stat" and not proj.de.has_stat:
+            note += " (this file has no Wald stat column)"
+        return ui.p(note, class_="ez-small")
+
+    @render.ui
     def gsea_out():
         if proj.de is None:
-            return empty("**Load the iDEP DE results matrix**; GSEA ranks all genes by log₂FC.")
+            return empty("**Load the iDEP DE results matrix**; GSEA ranks all genes by the "
+                         "DESeq2 Wald stat if the file has it, otherwise by log₂FC.")
         key = current_gsea_ready()
         if key is None:
             return empty("Running GSEA… (Hallmarks: a few seconds; GO Biological Process: "
@@ -634,6 +657,7 @@ def server(input, output, session):
             "volcano": asdict(volcano_params()) if proj.de is not None else None,
             "heatmap": asdict(heatmap_params()) if proj.heatmap is not None else None,
             "gsea_plot": asdict(gp), "gsea_settings": asdict(proj.gsea),
+            "gsea_ranked_by": RANK_LABELS[proj.rank_metric] if proj.de is not None else None,
             "gene_sets": genesets.VERSION, "ezplot": __version__,
         }
         yield export.bundle(figs, tables, params, input.x_fmt() or ["png"],

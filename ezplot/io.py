@@ -2,7 +2,9 @@
 
 iDEP files handled:
   de_matrix  - the DEG tab's full results download: symbol, ensembl_ID, ..., "<A>-<B>_log2FC",
-               "<A>-<B>_adjPval", then per-sample processed (log) expression
+               "<A>-<B>_adjPval", then per-sample processed (log) expression. SalmonFlow's
+               patched iDEP also offers "Results_full_DESeq2.csv", the same table with
+               "<A>-<B>_lfcSE", "_stat" and "_pvalue" added; its Wald stat ranks GSEA.
   heatmap    - DEG_Heatmap_Data.csv: rows = genes, columns = samples, row-centred values
   pathways   - sig_pathways*.csv from the Pathway tab (recognised, not needed: its "NES" is ES)
   gmt        - user gene-set collection
@@ -86,6 +88,7 @@ def detect_kind(df, name=""):
 
 KIND_LABELS = {
     "de_matrix": "DE matrix (volcano + GSEA)",
+    "de_matrix_stat": "Full DESeq2 matrix (volcano + GSEA by Wald stat)",
     "heatmap": "Heatmap data",
     "pathways": "iDEP pathway export: not needed, EZplot recomputes GSEA",
     "deg_list": "DEG gene list (not needed: load the full DE matrix instead)",
@@ -127,7 +130,7 @@ def guess_control(groups, preferred=None):
 
 @dataclass
 class DEMatrix:
-    genes: pd.DataFrame            # symbol, ensembl, raw_lfc, padj, baseMean
+    genes: pd.DataFrame            # symbol, ensembl, raw_lfc, padj, baseMean, raw_stat
     expr: pd.DataFrame             # genes x samples, processed expression (may be empty)
     contrast: tuple                # (A, B) as written in "<A>-<B>_log2FC"
     lfc_col: str
@@ -137,6 +140,11 @@ class DEMatrix:
     @property
     def group_names(self):
         return list(dict.fromkeys(self.groups.values()))
+
+    @property
+    def has_stat(self):
+        """True for the full DESeq2 export, which carries the Wald stat."""
+        return bool(self.genes["raw_stat"].notna().any())
 
 
 def parse_de_matrix(df, contrast=None):
@@ -148,6 +156,7 @@ def parse_de_matrix(df, contrast=None):
         lfc_col = next(c for c in lfc_cols if c.startswith(contrast))
     stem = lfc_col[: -len("_log2FC")]
     padj_col = f"{stem}_adjPval" if f"{stem}_adjPval" in df.columns else padj_cols[0]
+    extra = {k: f"{stem}_{k}" for k in ("lfcSE", "stat", "pvalue") if f"{stem}_{k}" in df.columns}
     parts = stem.split("-")
     contrast_pair = (parts[0], "-".join(parts[1:])) if len(parts) >= 2 else (stem, "")
 
@@ -160,13 +169,17 @@ def parse_de_matrix(df, contrast=None):
         "padj": pd.to_numeric(df[padj_col], errors="coerce"),
         "baseMean": pd.to_numeric(df["baseMean"], errors="coerce")
         if "baseMean" in df.columns else np.nan,
+        # same contrast and sign as raw_lfc (stat = log2FC / lfcSE), so it is oriented alike
+        "raw_stat": pd.to_numeric(df[extra["stat"]], errors="coerce") if "stat" in extra else np.nan,
     })
     empty = genes["symbol"].str.strip() == ""
     if ens_col:
         genes.loc[empty, "symbol"] = genes.loc[empty, "ensembl"]
 
     # expression columns: numeric columns after the iDEP marker / search_label column
-    known = {sym_col, ens_col, lfc_col, padj_col, "User_ID", "baseMean"} | set(lfc_cols) | set(padj_cols)
+    stat_cols = [c for c in df.columns if re.search(r"_(lfcSE|stat|pvalue)$", str(c))]
+    known = ({sym_col, ens_col, lfc_col, padj_col, "User_ID", "baseMean"}
+             | set(lfc_cols) | set(padj_cols) | set(stat_cols))
     start = 0
     for marker in ("search_label", "Processed data:"):
         if marker in df.columns:
