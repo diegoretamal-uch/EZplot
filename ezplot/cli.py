@@ -101,7 +101,7 @@ def main(argv=None):
     b.add_argument("--rank", choices=["stat", "lfc"], default="stat",
                    help="GSEA ranking: DESeq2 Wald stat (needs the full DESeq2 export; "
                         "falls back to log2FC) or log2FC")
-    b.add_argument("--collections", help="comma list: hallmarks,go_bp,go_mf,go_cc,custom")
+    b.add_argument("--collections", help="comma list: hallmarks,go_bp,go_mf,go_cc,reactome,kegg (human only),custom")
     b.add_argument("--formats", default="png,pdf")
     b.add_argument("--dpi", type=int, default=300)
     b.add_argument("--width-mm", type=float, default=0)

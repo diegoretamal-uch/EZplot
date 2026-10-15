@@ -1,14 +1,22 @@
-Gene sets in this folder come from the Molecular Signatures Database (MSigDB) v2024.1,
+Gene sets in this folder come from the Molecular Signatures Database (MSigDB) v2026.1,
 https://www.gsea-msigdb.org/gsea/msigdb, distributed under the Creative Commons
 Attribution 4.0 International License (CC BY 4.0).
 
-  mh.all / h.all        Hallmark gene sets (mouse / human)
-  m5.go.* / c5.go.*     Gene Ontology BP, MF, CC (mouse / human)
+  mh.all / h.all                Hallmark gene sets (mouse / human)
+  m5.go.* / c5.go.*             Gene Ontology BP, MF, CC (mouse / human)
+  m2.cp.reactome / c2.cp.reactome   Reactome pathways (mouse / human)
+  c2.cp.kegg_medicus            KEGG MEDICUS pathways (human only; MSigDB has no mouse KEGG)
 
-Files are gzip-compressed but otherwise unchanged. Please cite MSigDB when you publish:
+Files are gzip-compressed but otherwise unchanged. KEGG gene sets remain subject to KEGG's
+own terms (https://www.kegg.jp/kegg/legal.html): free for academic use, commercial use needs a
+KEGG license. Please cite MSigDB and the source databases when you publish:
   Liberzon A, et al. The Molecular Signatures Database Hallmark Gene Set Collection.
     Cell Syst. 2015;1(6):417-425.
   Castanza AS, et al. Extending support for mouse data in the Molecular Signatures
     Database (MSigDB). Nat Methods. 2023;20:1619-1620.
   Gene Ontology Consortium. The Gene Ontology knowledgebase in 2023. Genetics.
     2023;224(1):iyad031.
+  Milacic M, et al. The Reactome Pathway Knowledgebase 2024. Nucleic Acids Res.
+    2024;52(D1):D672-D678.
+  Kanehisa M, et al. KEGG: biological systems database as a model of the real world.
+    Nucleic Acids Res. 2025;53(D1):D672-D677.

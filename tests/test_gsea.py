@@ -44,3 +44,20 @@ def test_seed_reproducible():
     a = prerank(pr.ranking(), sets, seed=7)
     b = prerank(pr.ranking(), sets, seed=7)
     pd.testing.assert_frame_equal(a, b)
+
+
+@pytest.mark.parametrize("key,species", [(k, sp) for k, v in genesets.COLLECTIONS.items()
+                                         for sp in v[2]])
+def test_bundled_collections_load(key, species):
+    sets = genesets.load(key, species)
+    assert len(sets) > 10
+    gene = next(iter(sets.values()))[0]
+    assert gene == (gene.upper() if species == "human" else gene.capitalize())
+
+
+def test_collections_per_species():
+    pr = Project()
+    pr.species = "human"
+    assert {"reactome", "kegg"} <= set(pr.collections())
+    pr.species = "mouse"
+    assert "reactome" in pr.collections() and "kegg" not in pr.collections()

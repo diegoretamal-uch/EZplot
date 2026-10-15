@@ -53,7 +53,7 @@ WORDS = {
     "rna": "RNA", "mrna": "mRNA", "rrna": "rRNA", "trna": "tRNA", "ncrna": "ncRNA",
     "nadh": "NADH", "nadph": "NADPH", "ecm": "ECM", "er": "ER", "camp": "cAMP",
     "cgmp": "cGMP", "gtpase": "GTPase", "atpase": "ATPase", "mapk": "MAPK",
-    "erk1": "ERK1", "erk2": "ERK2", "jak": "JAK", "stat": "STAT", "stat3": "STAT3",
+    "erk": "ERK", "erk1": "ERK1", "gpcr": "GPCR", "rqc": "RQC", "au": "AU", "cdh1": "CDH1", "erk2": "ERK2", "jak": "JAK", "stat": "STAT", "stat3": "STAT3",
     "stat5": "STAT5", "tgf": "TGF", "kras": "KRAS", "p53": "p53", "e2f": "E2F",
     "g2m": "G2/M", "mtorc1": "mTORC1", "pi3k": "PI3K", "akt": "AKT", "mtor": "mTOR",
     "wnt": "Wnt", "il2": "IL-2", "il6": "IL-6", "myc": "Myc", "uv": "UV",
@@ -63,7 +63,7 @@ WORDS = {
     "coa": "CoA", "ap": "AP", "u2": "U2",
 }
 PHRASES = [
-    ("interferon alpha", "interferon-α"), ("interferon gamma", "interferon-γ"),
+    ("interferon alpha beta", "interferon-α/β"), ("interferon alpha", "interferon-α"), ("interferon gamma", "interferon-γ"),
     ("epithelial mesenchymal", "epithelial–mesenchymal"), ("TGF beta", "TGF-β"),
     (" up$", " (up)"), (" dn$", " (down)"), (" early$", " (early)"),
     (" late$", " (late)"), ("^Il ", "IL-"),
@@ -72,7 +72,8 @@ PHRASES = [
 
 def pretty_name(name, width=44, max_lines=2):
     """HALLMARK_TNFA_SIGNALING_VIA_NFKB -> 'TNFα signaling via NF-κB' (wrapped)."""
-    name = re.sub(r"^(HALLMARK|GOBP|GOMF|GOCC|KEGG|REACTOME|WP)[_ ]", "", name.strip())
+    name = re.sub(r"^(HALLMARK|GOBP|GOMF|GOCC|KEGG_MEDICUS_REFERENCE|KEGG_MEDICUS|KEGG|REACTOME|WP)[_ ]",
+                  "", name.strip())
     out = []
     for w in re.split(r"[_ ]+", name.lower()):
         parts = w.split("-")

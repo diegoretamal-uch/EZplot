@@ -89,7 +89,8 @@ GSEA itself:
   fold change by its uncertainty, so noisy low-count genes don't crowd the ends of the
   ranking. *GSEA settings → Rank genes by* switches between the two, and the GSEA tab says
   which one was used.
-- gene sets: MSigDB v2024.1 Hallmark and GO BP/MF/CC, mouse and human (bundled), or your `.gmt`
+- gene sets: MSigDB v2026.1 Hallmark, GO BP/MF/CC and Reactome for mouse and human, plus
+  KEGG MEDICUS for human (MSigDB has no mouse KEGG), all bundled; or your own `.gmt`
 - statistics as in fgsea: weighted KS enrichment score, NES against 1000 size-matched
   random gene sets, very small p-values refined by adaptive multilevel splitting, and
   Benjamini-Hochberg FDR.
@@ -101,8 +102,8 @@ of each other. Results are reproducible for a given random seed (*GSEA settings*
 
 **Methods text you can adapt:** *Gene set enrichment analysis was performed on genes ranked by
 the DESeq2 Wald statistic (iDEP) using EZplot v0.1, which implements the fgsea preranked
-algorithm (1,000 permutations; multilevel splitting for small p-values), with MSigDB v2024.1
-Hallmark and Gene Ontology collections (15-500 genes per set). Gene sets with FDR q < 0.05
+algorithm (1,000 permutations; multilevel splitting for small p-values), with MSigDB v2026.1
+Hallmark, Gene Ontology and Reactome collections (15-500 genes per set). Gene sets with FDR q < 0.05
 were considered significant.*
 *(If GSEA ranked by log2FC, say "DESeq2 log2 fold change" instead; the GSEA tab and
 `ezplot_parameters.json` record which ranking was used.)*

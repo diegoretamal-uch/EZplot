@@ -279,7 +279,8 @@ file. Only if the file has no sample columns does it ask you.
 ### GSEA and NES
 iDEP's exported "NES" column actually holds the raw enrichment score (ES), and NES cannot be
 recovered from that file. EZplot therefore re-runs preranked GSEA on all genes against
-{genesets.VERSION} (Hallmark, GO BP/MF/CC; mouse and human), with the same statistics as
+{genesets.VERSION} (Hallmark, GO BP/MF/CC and Reactome for mouse and human; KEGG MEDICUS for
+human only, since MSigDB has no mouse KEGG), with the same statistics as
 fgsea. NES agree with fgsea to about 0.01.
 
 Genes are ranked by the DESeq2 Wald stat (log2FC / lfcSE) when the file has it, which is

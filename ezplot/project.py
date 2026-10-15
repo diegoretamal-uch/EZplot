@@ -133,8 +133,7 @@ class Project:
     def collections(self):
         """Available GSEA collections: key -> (title, y label)."""
         out = {}
-        if self.species in genesets.SPECIES:
-            out.update({k: v[:2] for k, v in genesets.COLLECTIONS.items()})
+        out.update({k: genesets.COLLECTIONS[k][:2] for k in genesets.available(self.species)})
         if self.custom_sets:
             out["custom"] = (f"GSEA {self.custom_name}", "Gene set")
         return out
