@@ -88,3 +88,36 @@ def test_volcano_label_ranking():
     pr = project()
     for by in ("fdr", "lfc", "distance"):
         plt.close(pr.volcano(VolcanoParams(label_mode="top", label_top=5, label_rank=by)))
+
+
+def test_volcano_labels_no_overlap_high_n():
+    import numpy as np
+    import pandas as pd
+
+    from ezplot.plots.volcano import plot_volcano
+
+    rng = np.random.default_rng(42)
+    n = 1500
+    lfc = rng.normal(0, 1.2, n)
+    padj = np.clip(10 ** (-np.abs(lfc) * rng.uniform(0.5, 2.5, n) + rng.normal(0, 0.5, n)), 1e-15, 1.0)
+    genes = pd.DataFrame({"symbol": [f"Gene{i:03d}" for i in range(n)], "lfc": lfc, "padj": padj})
+
+    fig = plot_volcano(genes, VolcanoParams(label_mode="top", label_top=60))
+    ax = fig.axes[0]
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    gene_texts = [t for t in ax.texts if t.get_text().startswith("Gene")]
+    assert len(gene_texts) == 60
+
+    bboxes = [t.get_window_extent(renderer) for t in gene_texts]
+    overlaps = 0
+    for i in range(len(bboxes)):
+        for j in range(i + 1, len(bboxes)):
+            a, b = bboxes[i], bboxes[j]
+            if (min(a.xmax, b.xmax) - max(a.xmin, b.xmin) > 1.0) and (
+                min(a.ymax, b.ymax) - max(a.ymin, b.ymin) > 1.0
+            ):
+                overlaps += 1
+    assert overlaps == 0
+    plt.close(fig)
+
