@@ -121,3 +121,48 @@ def test_volcano_labels_no_overlap_high_n():
     assert overlaps == 0
     plt.close(fig)
 
+
+def test_gsea_size_legend_constant_gap_and_default_nperm():
+    import numpy as np
+    import pandas as pd
+
+    from ezplot.plots.gsea_dot import plot_gsea_dot
+    from ezplot.project import GseaSettings
+
+    assert GseaSettings().nperm == 10000
+
+    res = pd.DataFrame({
+        "pathway": [f"HALLMARK_SET_{i}" for i in range(6)],
+        "ES": [0.5, 0.4, 0.3, -0.3, -0.4, -0.5],
+        "NES": [2.2, 1.9, 1.6, -1.6, -1.9, -2.2],
+        "pval": [1e-5] * 6,
+        "padj": [1e-4, 5e-4, 2e-3, 3e-3, 1e-2, 2e-2],
+        "size": [690, 420, 250, 180, 90, 50],
+        "leadingEdge": ["A;B"] * 6,
+    })
+    fig = plot_gsea_dot(res, "Hallmarks", "Pathway", "Ctrl", "Trt", GseaDotParams())
+    # Legend axes is created before colorbar
+    lax = fig.axes[2]
+    ys = [c.get_offsets()[0, 1] for c in lax.collections]
+    radii = [0.5 * np.sqrt(c.get_sizes()[0]) for c in lax.collections]
+    gaps = [(ys[i] - radii[i]) - (ys[i + 1] + radii[i + 1]) for i in range(len(ys) - 1)]
+    assert np.allclose(gaps, 9.0)
+    assert all(g > 0 for g in gaps)
+    plt.close(fig)
+
+
+def test_heatmap_top_n_and_clustering():
+    from ezplot.plots.heatmap import DISTANCE_METRICS, LINKAGE_METHODS, TOP_RANK_MODES
+
+    pr = project()
+    for top_by in TOP_RANK_MODES:
+        fig = pr.heatmap_fig(HeatmapParams(top_n=8, top_by=top_by))
+        assert len(fig.axes[0].get_yticklabels()) == 8
+        assert "(n = 8)" in fig._suptitle.get_text()
+        plt.close(fig)
+
+    for method in LINKAGE_METHODS:
+        for metric in DISTANCE_METRICS:
+            fig = pr.heatmap_fig(HeatmapParams(top_n=10, method=method, metric=metric))
+            assert len(fig.axes[0].get_yticklabels()) == 10
+            plt.close(fig)

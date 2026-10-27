@@ -16,7 +16,7 @@ from .plots.volcano import VolcanoParams, plot_volcano
 class GseaSettings:
     min_size: int = 15
     max_size: int = 500
-    nperm: int = 1000
+    nperm: int = 10000
     seed: int = 42
     rank_by: str = "stat"      # "stat" (DESeq2 Wald stat, when the file has it) or "lfc"
 
@@ -171,7 +171,8 @@ class Project:
                  for s, g in self.groups.items()}
         labels = {"control": c, "treatment": t}
         colors = {"control": self.control_color, "treatment": self.treatment_color}
-        return plot_heatmap(self.heatmap, roles, labels, colors, p or HeatmapParams())
+        return plot_heatmap(self.heatmap, roles, labels, colors, p or HeatmapParams(),
+                            de_genes=self.oriented_genes())
 
     def gsea_fig(self, key, p=None):
         res = self.run_gsea(key)

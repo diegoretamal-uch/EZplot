@@ -10,10 +10,32 @@ from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from matplotlib.patches import Patch
+from scipy import stats
 from scipy.cluster import hierarchy
+from scipy.spatial import distance
 
 from .. import style
+
+LINKAGE_METHODS = {
+    "average": "Average (UPGMA)",
+    "ward": "Ward (minimum variance)",
+    "complete": "Complete (maximum)",
+    "single": "Single (minimum)",
+    "weighted": "Weighted (WPGMA)",
+}
+DISTANCE_METRICS = {
+    "euclidean": "Euclidean",
+    "correlation": "Pearson correlation",
+    "cityblock": "Manhattan (L1)",
+    "cosine": "Cosine",
+}
+TOP_RANK_MODES = {
+    "fdr": "FDR (smallest)",
+    "lfc": "|log₂FC| (largest)",
+    "pi": "|log₂FC| × −log₁₀(FDR)",
+}
 
 
 @dataclass
@@ -26,6 +48,8 @@ class HeatmapParams:
     cluster_cols: bool = True
     method: str = "average"
     metric: str = "euclidean"
+    top_n: int = 0                 # 0 = all genes in file; > 0 = top N genes by `top_by`
+    top_by: str = "fdr"            # fdr / lfc / pi
     show_genes: bool = True
     italic_genes: bool = True
     cell_borders: bool = True      # grey lines between cells (and between samples in the bar)
@@ -44,21 +68,77 @@ def row_zscore(x):
     return x.sub(x.mean(axis=1), axis=0).div(sd, axis=0).fillna(0.0)
 
 
+def _empirical_stats(x, sample_roles):
+    """Fallback |log2FC| and p-value from the heatmap matrix when DE table is not loaded."""
+    ctrl = [s for s in x.columns if sample_roles.get(s) == "control"]
+    trt = [s for s in x.columns if sample_roles.get(s) == "treatment"]
+    sd = x.std(axis=1, ddof=1).fillna(0.0)
+    if not ctrl or not trt:
+        return sd, pd.Series(1.0, index=x.index)
+    lfc_abs = (x[trt].mean(axis=1) - x[ctrl].mean(axis=1)).abs()
+    if len(ctrl) >= 2 and len(trt) >= 2:
+        _, pval = stats.ttest_ind(x[trt].to_numpy(), x[ctrl].to_numpy(), axis=1, equal_var=False)
+        pval = pd.Series(np.nan_to_num(pval, nan=1.0), index=x.index).clip(lower=1e-300, upper=1.0)
+    else:
+        pval = pd.Series(1.0, index=x.index)
+    return lfc_abs, pval
+
+
+def select_top_genes(x, sample_roles, p, de_genes=None):
+    """Filter heatmap matrix `x` to the top `p.top_n` genes by `fdr`, `lfc`, or `pi`."""
+    if not p.top_n or p.top_n <= 0 or len(x) <= p.top_n:
+        return x
+    k = int(p.top_n)
+    by = p.top_by or "fdr"
+    emp_lfc, emp_p = _empirical_stats(x, sample_roles)
+
+    if de_genes is not None and not de_genes.empty:
+        de = (
+            de_genes.dropna(subset=["symbol"])
+            .assign(_abs_lfc=de_genes["lfc"].abs())
+            .sort_values(["padj", "_abs_lfc"], ascending=[True, False], kind="mergesort")
+            .drop_duplicates("symbol", keep="first")
+            .set_index("symbol")
+        )
+        lfc_abs = de["lfc"].abs().reindex(x.index).fillna(emp_lfc)
+        padj = de["padj"].reindex(x.index).fillna(emp_p)
+    else:
+        lfc_abs, padj = emp_lfc, emp_p
+
+    pos_p = padj[padj > 0]
+    floor = pos_p.min() / 10.0 if len(pos_p) else 1e-300
+    neg_log10_fdr = -np.log10(padj.clip(lower=floor, upper=1.0))
+
+    if by == "lfc":
+        rank_df = pd.DataFrame({"_k1": -lfc_abs, "_k2": padj}, index=x.index)
+    elif by == "pi":
+        pi_score = lfc_abs * neg_log10_fdr
+        rank_df = pd.DataFrame({"_k1": -pi_score, "_k2": padj}, index=x.index)
+    else:  # "fdr"
+        rank_df = pd.DataFrame({"_k1": padj, "_k2": -lfc_abs}, index=x.index)
+
+    chosen = rank_df.sort_values(["_k1", "_k2"], kind="mergesort").head(k).index
+    return x.loc[x.index.isin(chosen)]
+
+
 def _order(data, method, metric):
     if len(data) < 2:
         return np.arange(len(data)), None
-    link = hierarchy.linkage(data, method=method, metric=metric)
+    d = distance.pdist(data, metric=metric)
+    d = np.nan_to_num(d, nan=0.0, posinf=0.0, neginf=0.0)
+    link = hierarchy.linkage(d, method=method)
     return np.array(hierarchy.leaves_list(link)), link
 
 
-def plot_heatmap(x, sample_roles, role_labels, role_colors, p=None):
+def plot_heatmap(x, sample_roles, role_labels, role_colors, p=None, de_genes=None):
     """x: genes x samples. sample_roles: sample -> 'control'/'treatment'/other key.
 
     role_labels/role_colors: role -> legend label / colour.
     """
     p = p or HeatmapParams()
     style.setup()
-    z = row_zscore(x) if p.zscore else x.copy()
+    x_sub = select_top_genes(x, sample_roles, p, de_genes=de_genes)
+    z = row_zscore(x_sub) if p.zscore else x_sub.copy()
     n, m = z.shape
 
     ri, rlink = _order(z.to_numpy(), p.method, p.metric) if p.cluster_rows else (np.arange(n), None)

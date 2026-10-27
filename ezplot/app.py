@@ -12,7 +12,7 @@ from shiny import App, reactive, render, ui  # noqa: E402
 
 from . import __version__, export, genesets, io, style  # noqa: E402
 from .plots.gsea_dot import GseaDotParams  # noqa: E402
-from .plots.heatmap import HeatmapParams  # noqa: E402
+from .plots.heatmap import DISTANCE_METRICS, LINKAGE_METHODS, TOP_RANK_MODES, HeatmapParams  # noqa: E402
 from .plots.volcano import VolcanoParams  # noqa: E402
 from .project import RANK_LABELS, GseaSettings, Project  # noqa: E402
 
@@ -148,10 +148,22 @@ heatmap_tab = ui.nav_panel(
             ui.accordion_panel(
                 "Options",
                 ui.input_text("h_title", "Title ({n} = number of genes)", HeatmapParams.title),
+                ui.input_radio_buttons("h_mode", "Genes to show",
+                                       {"all": "All genes", "top": "Top N"}, inline=True),
+                ui.panel_conditional(
+                    "input.h_mode === 'top'",
+                    ui.layout_columns(
+                        ui.input_numeric("h_top", "N", 50, min=2, max=2000, step=5),
+                        ui.input_select("h_rank", "Ranked by", TOP_RANK_MODES))),
                 ui.input_checkbox("h_z", "Scale each gene to z-scores (as in the template)", True),
                 ui.input_numeric("h_vlim", "Colour scale limit (±)", 2, min=0.5, max=10, step=0.5),
                 ui.layout_columns(ui.input_checkbox("h_crow", "Cluster genes", True),
                                   ui.input_checkbox("h_ccol", "Cluster samples", True)),
+                ui.layout_columns(
+                    ui.input_select("h_method", "Clustering linkage", LINKAGE_METHODS,
+                                    selected=HeatmapParams.method),
+                    ui.input_select("h_metric", "Distance metric", DISTANCE_METRICS,
+                                    selected=HeatmapParams.metric)),
                 ui.layout_columns(ui.input_checkbox("h_genes", "Show gene names", True),
                                   ui.input_checkbox("h_ital", "Italic genes", True)),
                 ui.input_checkbox("h_border", "Grey borders around cells", True),
@@ -220,7 +232,7 @@ gsea_tab = ui.nav_panel(
                     ui.input_numeric("g_min", "Min set size", 15, min=1),
                     ui.input_numeric("g_max", "Max set size", 500, min=5)),
                 ui.layout_columns(
-                    ui.input_numeric("g_nperm", "Permutations", 1000, min=100, max=100000, step=100),
+                    ui.input_numeric("g_nperm", "Permutations", 10000, min=100, max=100000, step=100),
                     ui.input_numeric("g_seed", "Random seed", 42)),
                 ui.p("Small p-values beyond the permutation floor are refined with "
                      "multilevel splitting, as in fgsea.", class_="ez-small"),
@@ -480,9 +492,12 @@ def server(input, output, session):
 
     # ── heatmap ──
     def heatmap_params():
+        top_n = (input.h_top() or 50) if input.h_mode() == "top" else 0
         return HeatmapParams(
             title=input.h_title(), zscore=input.h_z(), vlim=input.h_vlim() or 2,
             cmap=_cmap(input.h_cmap()), cluster_rows=input.h_crow(), cluster_cols=input.h_ccol(),
+            method=input.h_method() or "average", metric=input.h_metric() or "euclidean",
+            top_n=top_n, top_by=input.h_rank() or "fdr",
             show_genes=input.h_genes(), italic_genes=input.h_ital(), cell_borders=input.h_border(),
             gene_fontsize=input.h_gfs() or 15, sample_fontsize=input.h_sfs() or 14,
             title_fontsize=input.h_tfs() or 20, cbar_fontsize=input.h_cfs() or 13,
@@ -512,7 +527,7 @@ def server(input, output, session):
 
     def gsea_settings():
         return GseaSettings(min_size=input.g_min() or 15, max_size=input.g_max() or 500,
-                            nperm=input.g_nperm() or 1000, seed=input.g_seed() or 0,
+                            nperm=input.g_nperm() or 10000, seed=input.g_seed() or 0,
                             rank_by=input.g_rank())
 
     def run_collection(key):

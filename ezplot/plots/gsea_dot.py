@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import Normalize
+from matplotlib.patches import FancyBboxPatch
 
 from .. import style
 
@@ -42,6 +43,47 @@ def select(res, p):
     elif p.direction == "negative":
         sig = sig[sig["NES"] < 0]
     return sig.head(p.top).sort_values("NES")   # res is already sorted by padj, |NES|
+
+
+def _draw_size_legend(fig, x_fig, y_top_fig, vals, size_k, fig_w, fig_h):
+    """Draw the gene-set size legend box with a constant edge-to-edge gap between circles."""
+    radii = [0.5 * np.sqrt(size_k * v) for v in vals]
+    r_max = max(radii)
+    pad_top, title_h, gap_title = 7.5, 11.0, 7.5
+    circle_gap = 9.0   # constant edge-to-edge distance (in points) between consecutive circles
+    pad_bot = 8.0
+    pad_x = 9.0
+
+    y_down = []
+    cur = pad_top + title_h + gap_title
+    for i, r in enumerate(radii):
+        y_down.append(cur + r)
+        cur += 2.0 * r + (circle_gap if i < len(radii) - 1 else 0.0)
+    box_h_pt = cur + pad_bot
+
+    x_circle = pad_x + max(r_max, 8.0)
+    x_text = x_circle + r_max + 9.0
+    box_w_pt = max(76.0, x_text + 22.0 + pad_x)
+
+    w_fig = box_w_pt / (72.0 * fig_w)
+    h_fig = box_h_pt / (72.0 * fig_h)
+    lax = fig.add_axes([x_fig, y_top_fig - h_fig, w_fig, h_fig])
+    lax.set_xlim(0, box_w_pt)
+    lax.set_ylim(0, box_h_pt)
+    lax.set_axis_off()
+
+    box = FancyBboxPatch((0.5, 0.5), box_w_pt - 1.0, box_h_pt - 1.0,
+                         boxstyle="round,pad=0,rounding_size=3.0",
+                         facecolor="white", edgecolor="#cccccc", linewidth=0.8, zorder=1)
+    lax.add_patch(box)
+    lax.text(box_w_pt / 2.0, box_h_pt - pad_top, "Gene-set size",
+             ha="center", va="top", fontsize=10.5, color=style.TEXT, zorder=3)
+
+    for v, y_d in zip(vals, y_down):
+        y_pt = box_h_pt - y_d
+        lax.scatter([x_circle], [y_pt], s=size_k * v, color="#808080", edgecolors="none", zorder=3)
+        lax.text(x_text, y_pt, str(v), ha="left", va="center", fontsize=10.5, color=style.TEXT, zorder=3)
+    return lax
 
 
 def plot_gsea_dot(res, collection_title, ylabel, control, treatment, p=None):
@@ -88,12 +130,7 @@ def plot_gsea_dot(res, collection_title, ylabel, control, treatment, p=None):
         ax.set_ylim(-0.6, n - 0.4)
 
         vals = size_legend_values(sig["size"].max())
-        handles = [ax.scatter([], [], s=p.size_k * v, color="#808080", edgecolors="none")
-                   for v in vals]
-        ax.legend(handles, vals, title="Gene-set size", loc="upper left",
-                  bbox_to_anchor=(0.875, cb_top - cb_h - 0.35 / height), bbox_transform=fig.transFigure,
-                  fontsize=10.5, title_fontsize=10.5, labelspacing=1.0, borderpad=0.7,
-                  handletextpad=1.0, framealpha=1, edgecolor="#cccccc")
+        _draw_size_legend(fig, 0.875, cb_top - cb_h - 0.35 / height, vals, p.size_k, p.width, height)
     else:
         ax.set_yticks([])
         ax.set_ylim(0, 1)

@@ -117,7 +117,7 @@ def prepare_ranking(stats):
     return s.sort_values(ascending=False, kind="mergesort")
 
 
-def prerank(stats, gene_sets, min_size=15, max_size=500, nperm=1000, seed=42,
+def prerank(stats, gene_sets, min_size=15, max_size=500, nperm=10000, seed=42,
             multilevel=True, progress=None):
     """Run preranked GSEA. Returns a DataFrame sorted by padj (ties by |NES|).
 
