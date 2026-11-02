@@ -41,6 +41,9 @@ TOP_RANK_MODES = {
 @dataclass
 class HeatmapParams:
     title: str = "Differentially Expressed Genes (n = {n})"
+    source: str = "auto"           # "auto" / "de" (from DE matrix) / "file" (DEG_Heatmap_Data.csv)
+    fdr: float = 0.05              # FDR cutoff when building heatmap from DE matrix
+    lfc: float = 1.0               # |log2FC| cutoff when building heatmap from DE matrix
     zscore: bool = True
     vlim: float = 2.0
     cmap: str = "RdYlBu_r"
@@ -61,6 +64,29 @@ class HeatmapParams:
     width: float = 10.5
     height: float = 0.0            # 0 = automatic from the number of genes
     legend_title: str = "Condition"
+
+
+def heatmap_from_de(de_genes, de_expr, fdr=0.05, lfc=1.0):
+    """Build a row-centred expression matrix (genes x samples) directly from a DE matrix."""
+    if de_genes is None or de_expr is None or de_expr.empty:
+        return pd.DataFrame()
+    valid = (
+        de_genes["symbol"].notna()
+        & (de_genes["symbol"].astype(str).str.strip() != "")
+        & de_genes["padj"].notna()
+        & de_genes["lfc"].notna()
+        & de_expr.notna().all(axis=1)
+    )
+    sig = valid & (de_genes["padj"] < fdr) & (de_genes["lfc"].abs() >= lfc)
+    sub_g = de_genes.loc[sig].copy()
+    if sub_g.empty:
+        return pd.DataFrame(columns=de_expr.columns)
+    sub_g["_abs_lfc"] = sub_g["lfc"].abs()
+    sub_g = sub_g.sort_values(["padj", "_abs_lfc"], ascending=[True, False], kind="mergesort")
+    sub_g = sub_g.drop_duplicates("symbol", keep="first")
+    x = de_expr.loc[sub_g.index].copy()
+    x.index = [str(s).strip() for s in sub_g["symbol"]]
+    return x.sub(x.mean(axis=1), axis=0)
 
 
 def row_zscore(x):
@@ -86,7 +112,7 @@ def _empirical_stats(x, sample_roles):
 
 def select_top_genes(x, sample_roles, p, de_genes=None):
     """Filter heatmap matrix `x` to the top `p.top_n` genes by `fdr`, `lfc`, or `pi`."""
-    if not p.top_n or p.top_n <= 0 or len(x) <= p.top_n:
+    if x is None or x.empty or not p.top_n or p.top_n <= 0 or len(x) <= p.top_n:
         return x
     k = int(p.top_n)
     by = p.top_by or "fdr"
@@ -137,6 +163,21 @@ def plot_heatmap(x, sample_roles, role_labels, role_colors, p=None, de_genes=Non
     """
     p = p or HeatmapParams()
     style.setup()
+    if x is None or x.empty:
+        fig = plt.figure(figsize=(p.width, p.height or 5.5))
+        ax = fig.add_axes([0.11, 0.15, 0.78, 0.68])
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for s in ax.spines.values():
+            s.set_color("#cccccc")
+        ax.text(
+            0.5, 0.5,
+            f"No genes at FDR < {p.fdr:g} and |log$_2$FC| ≥ {p.lfc:g}",
+            transform=ax.transAxes, ha="center", va="center", fontsize=14, color=style.MUTED,
+        )
+        fig.suptitle(p.title.format(n=0), fontsize=p.title_fontsize, fontweight="bold", y=0.93)
+        return fig
+
     x_sub = select_top_genes(x, sample_roles, p, de_genes=de_genes)
     z = row_zscore(x_sub) if p.zscore else x_sub.copy()
     n, m = z.shape

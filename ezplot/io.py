@@ -87,9 +87,9 @@ def detect_kind(df, name=""):
 
 
 KIND_LABELS = {
-    "de_matrix": "DE matrix (volcano + GSEA)",
-    "de_matrix_stat": "Full DESeq2 matrix (volcano + GSEA by Wald stat)",
-    "heatmap": "Heatmap data",
+    "de_matrix": "DE matrix (volcano + heatmap + GSEA)",
+    "de_matrix_stat": "Full DESeq2 matrix (volcano + heatmap + GSEA by Wald stat)",
+    "heatmap": "Heatmap data (DEG_Heatmap_Data.csv)",
     "pathways": "iDEP pathway export: not needed, EZplot recomputes GSEA",
     "deg_list": "DEG gene list (not needed: load the full DE matrix instead)",
     "gmt": "Custom gene sets (.gmt)",

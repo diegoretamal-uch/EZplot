@@ -58,10 +58,13 @@ def batch(a):
     figs = {}
     if pr.de is not None:
         figs["volcano"] = pr.volcano
-    if pr.heatmap is not None:
-        figs["heatmap"] = pr.heatmap_fig
+    if pr.has_heatmap:
+        from .plots.heatmap import HeatmapParams
+        hp = HeatmapParams(fdr=a.heatmap_fdr, lfc=a.heatmap_lfc)
+        figs["heatmap"] = (lambda hp=hp: pr.heatmap_fig(hp))
     keys = [k for k in (a.collections.split(",") if a.collections else pr.collections()) if k]
     if pr.de is not None:
+        from .plots.gsea_mountain import GseaMountainParams
         for k in keys:
             if k not in pr.collections():
                 sys.exit(f"Unknown collection '{k}'. Available: {', '.join(pr.collections())}")
@@ -69,6 +72,9 @@ def batch(a):
             res.to_csv(out / f"gsea_{k}.tsv", sep="\t", index=False)
             print(f"  GSEA {k}: {len(res)} sets, {(res.padj < 0.05).sum()} at FDR < 0.05")
             figs[f"gsea_{k}"] = (lambda k=k: pr.gsea_fig(k))
+            if not res.empty and a.mountain > 0:
+                mp = GseaMountainParams(pathways=list(res["pathway"].head(a.mountain)))
+                figs[f"gsea_{k}_mountain"] = (lambda k=k, mp=mp: pr.gsea_mountain_fig(k, mp))
     width = a.width_mm or None
     for name, make in figs.items():
         fig = make()
@@ -90,7 +96,9 @@ def main(argv=None):
     ap.add_argument("--check", action="store_true", help="verify the install and exit")
     b = sub.add_parser("batch", help="render all plots without the app")
     b.add_argument("--de", help="iDEP DE results matrix (csv)")
-    b.add_argument("--heatmap", help="iDEP DEG_Heatmap_Data.csv")
+    b.add_argument("--heatmap", help="iDEP DEG_Heatmap_Data.csv (optional if --de has sample expression)")
+    b.add_argument("--heatmap-fdr", type=float, default=0.05, help="FDR cutoff when building heatmap from --de")
+    b.add_argument("--heatmap-lfc", type=float, default=1.0, help="|log2FC| cutoff when building heatmap from --de")
     b.add_argument("--gmt", help="custom gene sets (.gmt)")
     b.add_argument("--control", help="control group name (default: auto)")
     b.add_argument("--treatment", help="treatment group name (default: the other group)")
@@ -102,6 +110,8 @@ def main(argv=None):
                    help="GSEA ranking: DESeq2 Wald stat (needs the full DESeq2 export; "
                         "falls back to log2FC) or log2FC")
     b.add_argument("--collections", help="comma list: hallmarks,go_bp,go_mf,go_cc,reactome,kegg (human only),custom")
+    b.add_argument("--mountain", type=int, default=1,
+                   help="number of top pathways per collection to plot on GSEA mountain plot (0 to skip)")
     b.add_argument("--formats", default="png,pdf")
     b.add_argument("--dpi", type=int, default=300)
     b.add_argument("--width-mm", type=float, default=0)

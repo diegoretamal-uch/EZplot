@@ -166,3 +166,56 @@ def test_heatmap_top_n_and_clustering():
             fig = pr.heatmap_fig(HeatmapParams(top_n=10, method=method, metric=metric))
             assert len(fig.axes[0].get_yticklabels()) == 10
             plt.close(fig)
+
+
+def test_heatmap_directly_from_de_matrix():
+    pr = Project()
+    pr.load(EXAMPLE / "example_DE_matrix.csv", "de.csv")
+    assert pr.heatmap is None and pr.has_de_expr and pr.has_heatmap
+    assert pr.heatmap_source_used() == "de"
+
+    hm_de = pr.heatmap_matrix(HeatmapParams(source="de", fdr=0.05, lfc=1.0))
+    pr_both = project()
+    assert set(hm_de.index) == set(pr_both.heatmap.index)
+
+    fig = pr.heatmap_fig(HeatmapParams(source="de", fdr=0.05, lfc=1.0, top_n=12))
+    assert len(fig.axes[0].get_yticklabels()) == 12
+    assert "(n = 12)" in fig._suptitle.get_text()
+    plt.close(fig)
+
+    # Empty filter branch renders cleanly without raising
+    fig_empty = pr.heatmap_fig(HeatmapParams(source="de", fdr=1e-50, lfc=50.0))
+    assert "(n = 0)" in fig_empty._suptitle.get_text()
+    plt.close(fig_empty)
+
+
+def test_gsea_mountain_single_and_multi():
+    from ezplot.plots.gsea_mountain import GseaMountainParams
+
+    pr = Project()
+    pr.load(EXAMPLE / "example_DE_matrix.csv", "de.csv")
+
+    # Single-pathway mountain plot (default top pathway + leading-edge gene labels)
+    fig1 = pr.gsea_mountain_fig("hallmarks", GseaMountainParams(label_genes=5))
+    assert len(fig1.axes) == 3
+    assert len(export.figure_bytes(fig1, "png", 120)) > 1000
+    assert len(export.figure_bytes(fig1, "svg", 120)) > 1000
+    plt.close(fig1)
+
+    # Multi-pathway mountain plot without bottom ranking panel
+    fig_multi = pr.gsea_mountain_fig(
+        "hallmarks",
+        GseaMountainParams(
+            pathways=[
+                "HALLMARK_INTERFERON_ALPHA_RESPONSE",
+                "HALLMARK_OXIDATIVE_PHOSPHORYLATION",
+                "HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION",
+            ],
+            show_ranking=False,
+        ),
+    )
+    assert len(fig_multi.axes) == 2
+    assert len(fig_multi.legends) == 1
+    assert len(fig_multi.legends[0].get_texts()) == 3
+    plt.close(fig_multi)
+

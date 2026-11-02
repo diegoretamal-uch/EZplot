@@ -12,6 +12,7 @@ from shiny import App, reactive, render, ui  # noqa: E402
 
 from . import __version__, export, genesets, io, style  # noqa: E402
 from .plots.gsea_dot import GseaDotParams  # noqa: E402
+from .plots.gsea_mountain import GseaMountainParams  # noqa: E402
 from .plots.heatmap import DISTANCE_METRICS, LINKAGE_METHODS, TOP_RANK_MODES, HeatmapParams  # noqa: E402
 from .plots.volcano import VolcanoParams  # noqa: E402
 from .project import RANK_LABELS, GseaSettings, Project  # noqa: E402
@@ -143,10 +144,28 @@ volcano_tab = ui.nav_panel(
 heatmap_tab = ui.nav_panel(
     "Heatmap",
     ui.layout_columns(
-        ui.div(ui.output_ui("heatmap_out"), download_row("dl_heatmap")),
+        ui.div(
+            ui.output_ui("heatmap_source_note"),
+            ui.output_ui("heatmap_out"),
+            download_row("dl_heatmap"),
+        ),
         ui.accordion(
             ui.accordion_panel(
                 "Options",
+                ui.input_radio_buttons(
+                    "h_source",
+                    "Expression source",
+                    {"de": "Full DESeq2 / DE matrix", "file": "DEG_Heatmap_Data.csv"},
+                    selected="de",
+                    inline=True,
+                ),
+                ui.panel_conditional(
+                    "input.h_source === 'de'",
+                    ui.layout_columns(
+                        ui.input_numeric("h_fdr", "FDR cutoff", 0.05, min=0, max=1, step=0.01),
+                        ui.input_numeric("h_lfc", "log₂FC cutoff", 1.0, min=0, step=0.25),
+                    ),
+                ),
                 ui.input_text("h_title", "Title ({n} = number of genes)", HeatmapParams.title),
                 ui.input_radio_buttons("h_mode", "Genes to show",
                                        {"all": "All genes", "top": "Top N"}, inline=True),
@@ -191,7 +210,26 @@ gsea_tab = ui.nav_panel(
     "GSEA",
     ui.layout_columns(
         ui.div(
-            ui.input_select("g_coll", "Collection", {}),
+            ui.layout_columns(
+                ui.input_select("g_coll", "Collection", {}),
+                ui.input_radio_buttons(
+                    "g_view", "Plot type",
+                    {"dot": "Dot plot", "mountain": "Mountain plot"},
+                    inline=True,
+                ),
+                col_widths=(7, 5),
+            ),
+            ui.panel_conditional(
+                "input.g_view === 'mountain'",
+                ui.input_selectize(
+                    "g_pathways",
+                    "Pathways to plot (pick 1 for full stats & gene callouts, or up to 5 to overlay)",
+                    choices={},
+                    multiple=True,
+                    width="100%",
+                    options={"maxItems": 5, "placeholder": "Top significant pathway (or pick 1–5)…"},
+                ),
+            ),
             ui.output_ui("gsea_rank_note"),
             ui.output_ui("gsea_out"),
             download_row("dl_gsea"),
@@ -202,16 +240,13 @@ gsea_tab = ui.nav_panel(
         ),
         ui.accordion(
             ui.accordion_panel(
-                "Which gene sets to show",
+                "Dot plot options",
                 ui.layout_columns(
                     ui.input_numeric("g_top", "Top N", 10, min=1, max=60),
                     ui.input_numeric("g_q", "FDR q cutoff", 0.05, min=0, max=1, step=0.01)),
                 ui.input_radio_buttons("g_dir", "Direction",
                                        {"both": "Both", "positive": "Positive NES",
                                         "negative": "Negative NES"}, inline=True),
-            ),
-            ui.accordion_panel(
-                "Design",
                 ui.input_text("g_title", "Title", GseaDotParams.title),
                 ui.input_text("g_sub", "Subtitle", GseaDotParams.subtitle),
                 ui.layout_columns(
@@ -221,6 +256,18 @@ gsea_tab = ui.nav_panel(
                                 {"viridis": "Viridis (template)", "plasma": "Plasma",
                                  "cividis": "Cividis (colour-blind safe)", "Reds": "Reds"}),
                 size_inputs("g", GseaDotParams.width, 0),
+            ),
+            ui.accordion_panel(
+                "Mountain plot options",
+                ui.input_numeric("g_m_genes", "Label top leading-edge genes", 5, min=0, max=25, step=1),
+                ui.layout_columns(
+                    ui.input_checkbox("g_m_rank", "Show ranked metric panel", True),
+                    ui.input_checkbox("g_m_stats", "Show NES / FDR stats", True),
+                ),
+                ui.input_text("g_m_title", "Title (blank = pathway name)", ""),
+                ui.input_text("g_m_sub", "Subtitle", GseaMountainParams.subtitle),
+                ui.input_numeric("g_m_lw", "Curve line width", 2.4, min=0.8, max=6.0, step=0.2),
+                size_inputs("gm", GseaMountainParams.width, 0),
             ),
             ui.accordion_panel(
                 "GSEA settings",
@@ -238,7 +285,7 @@ gsea_tab = ui.nav_panel(
                      "multilevel splitting, as in fgsea.", class_="ez-small"),
                 ui.input_action_button("gsea_apply", "Apply and re-run", class_="btn-sm"),
             ),
-            open="Which gene sets to show",
+            open=["Dot plot options", "Mountain plot options"],
         ),
         col_widths=(8, 4),
     ),
@@ -275,12 +322,12 @@ help_tab = ui.nav_panel(
 ### What to download from iDEP
 | EZplot needs | Where in iDEP | Used for |
 |---|---|---|
-| **DE results matrix** (has columns like `CTRL-TRT_log2FC`, `CTRL-TRT_adjPval` and one column per sample) | *DEG* tab → download the full results table | Volcano, GSEA |
-| or the **full DESeq2 results** (`Results_full_DESeq2.csv`: the same plus `_lfcSE`, `_stat`, `_pvalue`) | SalmonFlow's iDEP, *DEG* tab → *Full DESeq2 results* | Volcano, GSEA ranked by Wald stat |
-| **DEG_Heatmap_Data.csv** | *DEG* tab → heatmap → download data | Heatmap |
+| **DE results matrix** (has columns like `CTRL-TRT_log2FC`, `CTRL-TRT_adjPval` and one column per sample) | *DEG* tab → download the full results table | Volcano, Heatmap, GSEA |
+| or the **full DESeq2 results** (`Results_full_DESeq2.csv`: the same plus `_lfcSE`, `_stat`, `_pvalue`) | SalmonFlow's iDEP, *DEG* tab → *Full DESeq2 results* | Volcano, Heatmap, GSEA ranked by Wald stat |
+| **DEG_Heatmap_Data.csv** *(optional)* | *DEG* tab → heatmap → download data | Heatmap (if you prefer iDEP's pre-filtered matrix) |
 | a `.gmt` file *(optional)* | MSigDB, Enrichr, … | Extra gene-set collection |
 
-Drop all files at once; EZplot recognises each one by its columns.
+Drop all files at once; EZplot recognises each one by its columns. A single **Full DESeq2 / DE matrix** file is enough to generate the Volcano plot, the DEG Heatmap, and GSEA (both Dot plots and Mountain plots).
 
 ### Direction of the comparison
 Pick your control and treatment groups in the sidebar; every plot is oriented so that
@@ -288,12 +335,14 @@ positive = higher in the treatment. iDEP's log2FC column name does not reliably 
 group its sign refers to, so EZplot reads that from the per-sample expression in the same
 file. Only if the file has no sample columns does it ask you.
 
-### GSEA and NES
+### GSEA: Dot plots and Mountain plots
 iDEP's exported "NES" column actually holds the raw enrichment score (ES), and NES cannot be
 recovered from that file. EZplot therefore re-runs preranked GSEA on all genes against
 {genesets.VERSION} (Hallmark, GO BP/MF/CC and Reactome for mouse and human; KEGG MEDICUS for
 human only, since MSigDB has no mouse KEGG), with the same statistics as
 fgsea. NES agree with fgsea to about 0.01.
+
+Switch between the **Dot plot** (summary of top pathways) and the **Mountain plot** (running enrichment score curve, member hit barcode, and ranked metric distribution for 1 to 5 selected pathways).
 
 Genes are ranked by the DESeq2 Wald stat (log2FC / lfcSE) when the file has it, which is
 the case for the *Full DESeq2 results* download of SalmonFlow's iDEP. The stat accounts for
@@ -493,8 +542,14 @@ def server(input, output, session):
     # ── heatmap ──
     def heatmap_params():
         top_n = (input.h_top() or 50) if input.h_mode() == "top" else 0
+        fdr = input.h_fdr()
+        lfc = input.h_lfc()
         return HeatmapParams(
-            title=input.h_title(), zscore=input.h_z(), vlim=input.h_vlim() or 2,
+            title=input.h_title(),
+            source=input.h_source() or "de",
+            fdr=0.05 if fdr is None else float(fdr),
+            lfc=1.0 if lfc is None else float(lfc),
+            zscore=input.h_z(), vlim=input.h_vlim() or 2,
             cmap=_cmap(input.h_cmap()), cluster_rows=input.h_crow(), cluster_cols=input.h_ccol(),
             method=input.h_method() or "average", metric=input.h_metric() or "euclidean",
             top_n=top_n, top_by=input.h_rank() or "fdr",
@@ -505,10 +560,24 @@ def server(input, output, session):
             width=input.h_w() or 10.5, height=input.h_h() or 0, legend_title=input.h_legend())
 
     @render.ui
+    def heatmap_source_note():
+        rev()
+        if not proj.has_heatmap:
+            return None
+        hp = heatmap_params()
+        src = proj.heatmap_source_used(hp)
+        if src == "de":
+            msg = f"Built directly from Full DESeq2 / DE matrix (FDR < {hp.fdr:g}, |log₂FC| ≥ {hp.lfc:g})"
+        else:
+            msg = "Built from DEG_Heatmap_Data.csv"
+        return ui.p(msg, class_="ez-small mb-1")
+
+    @render.ui
     def heatmap_out():
         rev()
-        if proj.heatmap is None:
-            return empty("**Load DEG_Heatmap_Data.csv** from iDEP to draw the heatmap.")
+        if not proj.has_heatmap:
+            return empty("**Load the Full DESeq2 / DE results matrix** (or `DEG_Heatmap_Data.csv`) "
+                         "from iDEP to draw the heatmap.")
         return fig_img(proj.heatmap_fig(heatmap_params()))
 
     # ── GSEA ──
@@ -549,6 +618,27 @@ def server(input, output, session):
         bump()
 
     @reactive.effect
+    def _():
+        # Populate pathway choices for the Mountain plot when collection results are ready
+        key = current_gsea_ready()
+        if key is None:
+            return
+        df = proj.run_gsea(key)
+        if df.empty:
+            ui.update_selectize("g_pathways", choices={}, selected=[])
+            return
+        choices = {
+            r["pathway"]: f"{style.pretty_name(r['pathway'], None)} (NES {r['NES']:+.2f}, FDR {r['padj']:.2g})"
+            for _, r in df.iterrows()
+        }
+        with reactive.isolate():
+            cur = list(input.g_pathways() or [])
+        valid = [p for p in cur if p in choices]
+        if not valid:
+            valid = [df.iloc[0]["pathway"]]
+        ui.update_selectize("g_pathways", choices=choices, selected=valid)
+
+    @reactive.effect
     @reactive.event(input.gsea_apply)
     def _():
         proj.gsea = gsea_settings()
@@ -560,6 +650,20 @@ def server(input, output, session):
             q=input.g_q() or 0.05, top=input.g_top() or 10, qmax=input.g_qmax() or 4,
             wrap=input.g_wrap() or 50, cmap=input.g_cmap(), width=input.g_w() or 10,
             height=input.g_h() or 0, direction=input.g_dir())
+
+    def gsea_mountain_params():
+        n_genes = input.g_m_genes()
+        return GseaMountainParams(
+            pathways=list(input.g_pathways() or []),
+            title=input.g_m_title() or "",
+            subtitle=input.g_m_sub() or GseaMountainParams.subtitle,
+            show_ranking=bool(input.g_m_rank()),
+            show_stats=bool(input.g_m_stats()),
+            label_genes=0 if n_genes is None else int(n_genes),
+            line_width=input.g_m_lw() or 2.4,
+            width=input.gm_w() or 8.5,
+            height=input.gm_h() or 0,
+        )
 
     def current_gsea_ready():
         rev(), gsea_rev()
@@ -587,6 +691,8 @@ def server(input, output, session):
         if key is None:
             return empty("Running GSEA… (Hallmarks: a few seconds; GO Biological Process: "
                          "up to a minute). Results are kept, so switching back is instant.")
+        if input.g_view() == "mountain":
+            return fig_img(proj.gsea_mountain_fig(key, gsea_mountain_params()))
         return fig_img(proj.gsea_fig(key, gsea_params()))
 
     @render.data_frame
@@ -634,14 +740,23 @@ def server(input, output, session):
 
     @render.download_button(filename=lambda: f"heatmap.{input.x_one()}")
     def dl_heatmap():
-        if proj.heatmap is not None:
+        if proj.has_heatmap:
             yield one(lambda: proj.heatmap_fig(heatmap_params()), "heatmap")
 
-    @render.download_button(filename=lambda: f"gsea_{input.g_coll()}.{input.x_one()}")
+    @render.download_button(
+        filename=lambda: (
+            f"gsea_{input.g_coll()}_mountain.{input.x_one()}"
+            if input.g_view() == "mountain"
+            else f"gsea_{input.g_coll()}.{input.x_one()}"
+        )
+    )
     def dl_gsea():
         key = current_gsea_ready()
         if key:
-            yield one(lambda: proj.gsea_fig(key, gsea_params()), f"gsea_{key}")
+            if input.g_view() == "mountain":
+                yield one(lambda: proj.gsea_mountain_fig(key, gsea_mountain_params()), f"gsea_{key}_mountain")
+            else:
+                yield one(lambda: proj.gsea_fig(key, gsea_params()), f"gsea_{key}")
 
     @render.download_button(filename=lambda: f"gsea_{input.g_coll()}.tsv")
     def dl_gsea_tsv():
@@ -655,24 +770,37 @@ def server(input, output, session):
         if proj.de is not None:
             vp = volcano_params()
             figs["volcano"] = lambda: proj.volcano(vp)
-        if proj.heatmap is not None:
+        if proj.has_heatmap:
             hp = heatmap_params()
             figs["heatmap"] = lambda: proj.heatmap_fig(hp)
         gp = gsea_params()
+        gmp = gsea_mountain_params()
+        cur_coll = input.g_coll()
         if proj.de is not None:
             for key in proj.collections():
                 if not proj.gsea_done(key) and input.x_runall():
                     run_collection(key)
                 if proj.gsea_done(key):
                     figs[f"gsea_{key}"] = (lambda k=key: proj.gsea_fig(k, gp))
+                    mp = gmp if key == cur_coll else GseaMountainParams(
+                        pathways=[],
+                        subtitle=gmp.subtitle,
+                        show_ranking=gmp.show_ranking,
+                        show_stats=gmp.show_stats,
+                        label_genes=gmp.label_genes,
+                        line_width=gmp.line_width,
+                        width=gmp.width,
+                        height=gmp.height,
+                    )
+                    figs[f"gsea_{key}_mountain"] = (lambda k=key, m=mp: proj.gsea_mountain_fig(k, m))
                     tables[f"gsea_{key}"] = proj.run_gsea(key)
         params = {
             "files": [n for n, _, _ in files_state()],
             "control": proj.control, "treatment": proj.treatment,
             "direction": proj.direction_sentence(), "species": proj.species,
             "volcano": asdict(volcano_params()) if proj.de is not None else None,
-            "heatmap": asdict(heatmap_params()) if proj.heatmap is not None else None,
-            "gsea_plot": asdict(gp), "gsea_settings": asdict(proj.gsea),
+            "heatmap": asdict(heatmap_params()) if proj.has_heatmap else None,
+            "gsea_plot": asdict(gp), "gsea_mountain": asdict(gmp), "gsea_settings": asdict(proj.gsea),
             "gsea_ranked_by": RANK_LABELS[proj.rank_metric] if proj.de is not None else None,
             "gene_sets": genesets.VERSION, "ezplot": __version__,
         }

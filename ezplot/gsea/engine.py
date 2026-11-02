@@ -196,3 +196,67 @@ def _leading_edge(p, w, n, es, genes):
     else:
         hits = p[np.argmin(bot[0]):][::-1]
     return list(genes[hits])
+
+
+def enrichment_curve(stats, members):
+    """Compute exact piecewise-linear running-ES curve and hit positions for one gene set."""
+    r = prepare_ranking(stats)
+    genes = r.index.to_numpy()
+    vals = r.to_numpy()
+    n = len(genes)
+    if n == 0:
+        return None
+    w = np.abs(vals)
+    where = {g: i for i, g in enumerate(genes)}
+    pos = np.unique([where[g] for g in members if g in where])
+    if len(pos) == 0:
+        return None
+
+    top_arr, bot_arr = _running(pos[None, :], w, n)
+    top, bot = top_arr[0], bot_arr[0]
+
+    xs = np.empty(2 * len(pos) + 2, dtype=float)
+    ys = np.empty(2 * len(pos) + 2, dtype=float)
+    xs[0], ys[0] = 0.0, 0.0
+    xs[1:-1:2] = pos + 1
+    ys[1:-1:2] = bot
+    xs[2:-1:2] = pos + 1
+    ys[2:-1:2] = top
+    xs[-1], ys[-1] = float(n), 0.0
+
+    mx_i = int(np.argmax(top))
+    mn_i = int(np.argmin(bot))
+    if top[mx_i] > -bot[mn_i]:
+        es = float(top[mx_i])
+        peak_rank = int(pos[mx_i] + 1)
+        le_slice = slice(0, mx_i + 1)
+        le_ranks = pos[le_slice] + 1
+        le_genes = genes[pos[le_slice]]
+        le_es = top[le_slice]
+    else:
+        es = float(bot[mn_i])
+        peak_rank = int(pos[mn_i] + 1)
+        le_idx = pos[mn_i:][::-1]
+        le_ranks = le_idx + 1
+        le_genes = genes[le_idx]
+        le_es = bot[mn_i:][::-1]
+
+    neg_idx = np.flatnonzero(vals <= 0)
+    zero_cross = int(neg_idx[0] + 1) if len(neg_idx) else n
+    return {
+        "xs": xs,
+        "ys": ys,
+        "hits": pos + 1,
+        "hit_genes": genes[pos],
+        "hit_top": top,
+        "hit_bot": bot,
+        "es": es,
+        "peak_rank": peak_rank,
+        "leading_ranks": le_ranks,
+        "leading_genes": le_genes,
+        "leading_es": le_es,
+        "n_genes": n,
+        "ranked_values": vals,
+        "zero_cross": zero_cross,
+    }
+

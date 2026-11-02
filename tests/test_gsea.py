@@ -61,3 +61,20 @@ def test_collections_per_species():
     assert {"reactome", "kegg"} <= set(pr.collections())
     pr.species = "mouse"
     assert "reactome" in pr.collections() and "kegg" not in pr.collections()
+
+
+def test_enrichment_curve_matches_prerank():
+    from ezplot.gsea.engine import enrichment_curve
+
+    pr = Project()
+    pr.load(EXAMPLE / "example_DE_matrix.csv", "de.csv")
+    sets = genesets.load("hallmarks", "mouse")
+    res = pr.run_gsea("hallmarks").set_index("pathway")
+    for pw in ("HALLMARK_INTERFERON_ALPHA_RESPONSE", "HALLMARK_OXIDATIVE_PHOSPHORYLATION"):
+        c = enrichment_curve(pr.ranking(), sets[pw])
+        assert c is not None
+        assert c["xs"][0] == 0.0 and c["ys"][0] == 0.0
+        assert c["xs"][-1] == c["n_genes"] and c["ys"][-1] == pytest.approx(0.0)
+        assert c["es"] == pytest.approx(res.loc[pw, "ES"])
+        assert ";".join(c["leading_genes"]) == res.loc[pw, "leadingEdge"]
+

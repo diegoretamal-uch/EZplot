@@ -288,9 +288,15 @@ def _place_labels(ax, texts, target_x, target_y, df, p, fdr_text=None):
         xmin_b = ax_x0 + half_w
         xmax_b = ax_x1 - half_w
         if target_x[i] < 0:
-            xmax_b = min(xmax_b, x_pos_lfc_px - half_w - 2.0)
+            xmax_b = min(
+                xmax_b,
+                max(x_pos_lfc_px - half_w - 2.0, x_neg_lfc_px + r_sig_px + 3.0 + half_w),
+            )
         elif target_x[i] > 0:
-            xmin_b = max(xmin_b, x_neg_lfc_px + half_w + 2.0)
+            xmin_b = max(
+                xmin_b,
+                min(x_neg_lfc_px + half_w + 2.0, x_pos_lfc_px - r_sig_px - 3.0 - half_w),
+            )
         return xmin_b, xmax_b
 
     def get_candidates(i):
@@ -338,6 +344,7 @@ def _place_labels(ax, texts, target_x, target_y, df, p, fdr_text=None):
         own_dx = np.maximum(0.0, np.maximum(x0 - txi, txi - x1))
         own_dy = np.maximum(0.0, np.maximum(y0 - tyi, tyi - y1))
         dist_edge = np.hypot(own_dx, own_dy)
+        eff_dist = np.hypot(own_dx, own_dy * 1.45)
         too_close_own = dist_edge < (r_sig_px + 1.5)
         hard_ov = query_sat(sat_hard, x0, x1, y0, y1) > 0
 
@@ -366,7 +373,7 @@ def _place_labels(ax, texts, target_x, target_y, df, p, fdr_text=None):
         pcx, pcy = cx[pool], cy[pool]
         px0, px1 = x0[pool], x1[pool]
         py0, py1 = y0[pool], y1[pool]
-        p_dist = dist_edge[pool]
+        p_dist = eff_dist[pool]
         p_lov = label_ov_area[pool]
 
         sig_ov = query_sat(sat_sig, px0 - 1.0, px1 + 1.0, py0 - 1.0, py1 + 1.0)
@@ -374,20 +381,20 @@ def _place_labels(ax, texts, target_x, target_y, df, p, fdr_text=None):
 
         cost = (
             p_dist * 2.0
-            + 0.008 * (p_dist ** 2)
+            + 0.012 * (p_dist ** 2)
             + np.where(sig_ov > 0, 5000.0 + sig_ov * 180.0, 0.0)
             + np.where(ns_ov > 0, 120.0 + ns_ov * 12.0, 0.0)
             + p_lov * 10000.0
         )
 
         if target_x[i] < 0:
-            cost += np.maximum(0.0, px1 - x_zero_px) * 3.0
+            cost += np.maximum(0.0, px1 - x_zero_px) * 2.5
         elif target_x[i] > 0:
-            cost += np.maximum(0.0, x_zero_px - px0) * 3.0
+            cost += np.maximum(0.0, x_zero_px - px0) * 2.5
 
         if len(act_idx) > 0:
-            if len(pool) > 350:
-                top_k = np.argpartition(cost, 350)[:350]
+            if len(pool) > 600:
+                top_k = np.argpartition(cost, 600)[:600]
                 pool = pool[top_k]
                 pcx, pcy = cx[pool], cy[pool]
                 px0, px1, py0, py1 = x0[pool], x1[pool], y0[pool], y1[pool]

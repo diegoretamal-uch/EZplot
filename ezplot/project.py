@@ -8,7 +8,8 @@ import pandas as pd
 from . import genesets, io, style
 from .gsea.engine import prerank
 from .plots.gsea_dot import GseaDotParams, plot_gsea_dot
-from .plots.heatmap import HeatmapParams, plot_heatmap
+from .plots.gsea_mountain import GseaMountainParams, plot_gsea_mountain
+from .plots.heatmap import HeatmapParams, heatmap_from_de, plot_heatmap
 from .plots.volcano import VolcanoParams, plot_volcano
 
 
@@ -160,18 +161,51 @@ class Project:
     def gsea_done(self, key):
         return self.de is not None and self._cache_key(key) in self._gsea_cache
 
+    @property
+    def has_de_expr(self):
+        return self.de is not None and not self.de.expr.empty
+
+    @property
+    def has_heatmap(self):
+        return (self.heatmap is not None and not self.heatmap.empty) or self.has_de_expr
+
+    def heatmap_source_used(self, p=None):
+        """Return 'de', 'file', or None indicating which heatmap data source is active."""
+        p = p or HeatmapParams()
+        can_de = self.has_de_expr
+        can_file = self.heatmap is not None and not self.heatmap.empty
+        if p.source == "de" and can_de:
+            return "de"
+        if p.source == "file" and can_file:
+            return "file"
+        if can_file:
+            return "file"
+        if can_de:
+            return "de"
+        return None
+
+    def heatmap_matrix(self, p=None):
+        p = p or HeatmapParams()
+        src = self.heatmap_source_used(p)
+        if src == "de":
+            return heatmap_from_de(self.oriented_genes(), self.de.expr, p.fdr, p.lfc)
+        if src == "file":
+            return self.heatmap
+        return None
+
     # ── figures ───────────────────────────────────────────────
     def volcano(self, p=None):
         p = p or VolcanoParams()
         return plot_volcano(self.oriented_genes(), p)
 
     def heatmap_fig(self, p=None):
+        p = p or HeatmapParams()
         c, t = self.labels
         roles = {s: ("control" if g == self.control else "treatment" if g == self.treatment else g)
                  for s, g in self.groups.items()}
         labels = {"control": c, "treatment": t}
         colors = {"control": self.control_color, "treatment": self.treatment_color}
-        return plot_heatmap(self.heatmap, roles, labels, colors, p or HeatmapParams(),
+        return plot_heatmap(self.heatmap_matrix(p), roles, labels, colors, p,
                             de_genes=self.oriented_genes())
 
     def gsea_fig(self, key, p=None):
@@ -179,3 +213,18 @@ class Project:
         title, ylabel = self.collections()[key]
         c, t = self.labels
         return plot_gsea_dot(res, title, ylabel, c, t, p or GseaDotParams())
+
+    def gsea_mountain_fig(self, key, p=None):
+        res = self.run_gsea(key)
+        title, _ = self.collections()[key]
+        c, t = self.labels
+        return plot_gsea_mountain(
+            res,
+            self.ranking(),
+            self.gene_sets(key),
+            title,
+            RANK_LABELS[self.rank_metric],
+            c,
+            t,
+            p or GseaMountainParams(),
+        )

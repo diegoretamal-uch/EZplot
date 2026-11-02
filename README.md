@@ -1,13 +1,14 @@
 # EZplot
 
-Publication-quality **volcano plots, DEG heatmaps and GSEA dot plots** from
+Publication-quality **volcano plots, DEG heatmaps, GSEA dot plots and GSEA mountain plots** from
 [iDEP](http://bioinformatics.sdstate.edu/idep/) results, in a few clicks.
 
 ![EZplot screenshot](docs/screenshot.png)
 
 - Drop in the files you downloaded from iDEP; EZplot recognises each one.
+- A single **Full DESeq2 / DE matrix** file is enough to generate Volcano, Heatmap and GSEA plots.
 - It checks the direction of your comparison against the sample data, so "up" really means up.
-- Re-runs GSEA to give real **NES** values (iDEP's export labels raw ES as "NES").
+- Re-runs GSEA to give real **NES** values (iDEP's export labels raw ES as "NES"), with both summary **dot plots** and classic **mountain plots** (running ES curve + barcode + ranked metric).
 - Exports PNG/TIFF at journal resolution and column width, or PDF/SVG with editable text.
 - Runs on Windows, macOS and Linux. No Docker, no admin rights, no R.
 
@@ -51,9 +52,9 @@ takes about a minute instead of 20 s.
 
 | EZplot needs | Where in iDEP | Used for |
 |---|---|---|
-| **DE results matrix**: has columns like `CTRL-TRT_log2FC`, `CTRL-TRT_adjPval` and one column per sample | *DEG* tab → download the full results table | Volcano, GSEA |
-| or the **full DESeq2 results** (`Results_full_DESeq2.csv`): the same table plus `_lfcSE`, `_stat` and `_pvalue` per comparison | [SalmonFlow](https://github.com/diegoretamal-uch/salmonflow)'s iDEP, *DEG* tab → **Full DESeq2 results** (DESeq2 method only) | Volcano, GSEA ranked by the Wald stat (recommended) |
-| **`DEG_Heatmap_Data.csv`** | *DEG* tab → heatmap → download data | Heatmap |
+| **DE results matrix**: has columns like `CTRL-TRT_log2FC`, `CTRL-TRT_adjPval` and one column per sample | *DEG* tab → download the full results table | Volcano, Heatmap, GSEA |
+| or the **full DESeq2 results** (`Results_full_DESeq2.csv`): the same table plus `_lfcSE`, `_stat` and `_pvalue` per comparison | [SalmonFlow](https://github.com/diegoretamal-uch/salmonflow)'s iDEP, *DEG* tab → **Full DESeq2 results** (DESeq2 method only) | Volcano, Heatmap, GSEA ranked by the Wald stat (recommended) |
+| **`DEG_Heatmap_Data.csv`** *(optional)* | *DEG* tab → heatmap → download data | Heatmap (if you prefer iDEP's pre-filtered matrix) |
 | a `.gmt` file *(optional)* | MSigDB, Enrichr, your own | Extra gene-set collection |
 
 No data at hand? Click **Try it with example data** in the app. The example is a synthetic
@@ -66,7 +67,8 @@ dataset in iDEP's format.
    e.g. *"Positive log₂FC / NES = higher in KO than in WT"*. Rename groups for the figure
    legends and pick their colours under *Labels, colours, species*.
 3. **Volcano / Heatmap / GSEA tabs.** Each shows a live preview with options on the right.
-   On the GSEA tab, pick a collection; GSEA runs on its own and results are kept.
+   On the Heatmap tab, build the heatmap directly from the DE / Full DESeq2 matrix (with live FDR and |log₂FC| cutoffs) or from `DEG_Heatmap_Data.csv`.
+   On the GSEA tab, pick a collection and switch between the **Dot plot** and the **Mountain plot** (single-pathway with leading-edge gene callouts or multi-pathway overlay).
 4. **Export.** Pick formats, resolution and printed width (single column 89 mm, double column
    183 mm), then use *Download this plot* or **Download all (.zip)**. The zip includes the GSEA
    tables and an `ezplot_parameters.json` that records every setting used.
