@@ -219,3 +219,91 @@ def test_gsea_mountain_single_and_multi():
     assert len(fig_multi.legends[0].get_texts()) == 3
     plt.close(fig_multi)
 
+
+def _tall_figure(w=5.0, h=5.0):
+    fig = plt.figure(figsize=(w, h))
+    fig.add_axes([0, 0, 1, 1]).plot([0, 1], [0, 1])
+    return fig
+
+
+def test_figure_bytes_no_decompression_bomb(monkeypatch):
+    # Real case: a ~750-gene heatmap at 300 dpi (or most heatmaps at 1200 dpi) is more than
+    # 2 x PIL's MAX_IMAGE_PIXELS. Shrink the limit so a small figure reproduces it cheaply.
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100_000)   # bomb error above 200k px
+    fig = _tall_figure()                                       # 5 x 5 in at 100 dpi ~ 250k px
+    raw = _io.BytesIO()
+    fig.savefig(raw, format="png", dpi=100, bbox_inches="tight", pad_inches=0.08)
+    try:
+        Image.open(_io.BytesIO(raw.getvalue()))
+        raise AssertionError("expected PIL to reject this image size")
+    except Image.DecompressionBombError:
+        pass                                                   # the old code path failed here
+
+    for fmt, width in (("png", None), ("png", 120), ("tiff", None), ("tiff", 120)):
+        data = export.figure_bytes(fig, fmt, 100, width)
+        assert Image.MAX_IMAGE_PIXELS == 100_000               # guard restored afterwards
+        monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", None)
+        img = Image.open(_io.BytesIO(data))
+        img.load()
+        monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100_000)
+        assert img.format == ("PNG" if fmt == "png" else "TIFF")
+        assert round(img.info["dpi"][0]) == 100
+        if width:
+            assert img.width == round(width / 25.4 * 100)
+        else:
+            assert img.width * img.height > 200_000
+    plt.close(fig)
+
+
+def test_figure_bytes_caps_raster_size(monkeypatch):
+    # Agg cannot render 2**16 px per side; huge figures are rendered at a lower DPI instead
+    monkeypatch.setattr(export, "RASTER_MAX_PX", 300)
+    fig = _tall_figure(3.0, 6.0)                               # 6 in at 100 dpi = 600 px
+    for fmt in ("png", "tiff"):
+        img = Image.open(_io.BytesIO(export.figure_bytes(fig, fmt, 100)))
+        assert max(img.size) <= 300 * 1.1                      # tight bbox may add the pad
+        assert round(img.info["dpi"][0]) == 50
+    plt.close(fig)
+
+
+def test_bundle_survives_failing_items():
+    import pandas as pd
+
+    def broken():
+        raise RuntimeError("plot exploded")
+
+    def half_built():
+        plt.figure()
+        raise ValueError("failed after creating a figure")
+
+    class BadTable:
+        def to_csv(self, **kw):
+            raise OSError("cannot serialise")
+
+    open_before = set(plt.get_fignums())
+    data = export.bundle(
+        {"good": _tall_figure, "broken": broken, "half": half_built},
+        {"ok": pd.DataFrame({"a": [1, 2]}), "bad": BadTable()},
+        {"x": 1}, ("png", "pdf"), 100,
+        errors=["GSEA GO Biological Process: MemoryError: out of memory"],
+    )
+    assert set(plt.get_fignums()) == open_before               # nothing leaked
+    assert len(data) > 1000
+    z = zipfile.ZipFile(_io.BytesIO(data))
+    assert z.testzip() is None
+    names = set(z.namelist())
+    assert {"figures/good.png", "figures/good.pdf", "tables/ok.tsv", "ezplot_parameters.json",
+            "errors.txt"} <= names
+    assert not any("broken" in n or "half" in n or "bad" in n for n in names - {"errors.txt"})
+    txt = z.read("errors.txt").decode()
+    for needle in ("figures/broken", "RuntimeError: plot exploded", "figures/half",
+                   "ValueError", "tables/bad.tsv", "OSError", "GO Biological Process"):
+        assert needle in txt
+    import json
+    assert len(json.loads(z.read("ezplot_parameters.json"))["errors"]) == 4
+
+
+def test_bundle_without_errors_has_no_errors_file():
+    data = export.bundle({"good": _tall_figure}, {}, {}, ("png",), 80)
+    names = zipfile.ZipFile(_io.BytesIO(data)).namelist()
+    assert "errors.txt" not in names and "figures/good.png" in names

@@ -1,6 +1,12 @@
 """EZplot Shiny app: load iDEP files, preview and tune the plots, export for a journal."""
 
+import asyncio
 import base64
+import io as _stdio
+import json
+import sys
+import traceback
+import zipfile
 from dataclasses import asdict
 from pathlib import Path
 
@@ -18,6 +24,8 @@ from .plots.volcano import VolcanoParams  # noqa: E402
 from .project import RANK_LABELS, GseaSettings, Project  # noqa: E402
 
 EXAMPLE = Path(__file__).parent / "example"
+# Pyodide (the browser-only Shinylive build) cannot start threads
+THREADS = sys.platform != "emscripten"
 CSS = """
 .ez-drop .form-group{margin-bottom:.25rem}
 .ez-badge{display:inline-block;font-size:.78rem;padding:.1rem .45rem;border-radius:.6rem;
@@ -310,6 +318,8 @@ export_tab = ui.nav_panel(
             ui.p("A zip with every plot in the chosen formats, all GSEA tables that have been "
                  "run, and a parameters file so the figures can be reproduced."),
             ui.output_ui("x_status"),
+            ui.input_action_button("x_run_pending", "Run pending GSEA now",
+                                   class_="btn-sm btn-outline-secondary mb-2"),
             ui.input_checkbox("x_runall", "Also run GSEA for collections not run yet", False),
             ui.download_button("dl_all", "Download all (.zip)", class_="btn-primary"),
         ),
@@ -720,6 +730,106 @@ def server(input, output, session):
                     ui.tags.b("Not run with the current settings: "), ", ".join(todo) or "none",
                     class_="ez-small")
 
+    # ── running pending GSEA collections (Export tab) ──
+    # Pending collections are run in a worker thread (inline under Pyodide), one at a
+    # time, yielding to the event loop in between, so progress reaches the browser, the
+    # websocket keepalives are answered, and x_status / the ✓ marks update after each one.
+    pending = {"task": None}
+
+    def pending_keys():
+        if proj.de is None:
+            return []
+        return [k for k in proj.collections() if not proj.gsea_done(k)]
+
+    async def publish_gsea():
+        # Called from tasks / the download request, outside a reactive flush: take the
+        # reactive lock, bump, and flush so the new outputs are sent right away.
+        async with reactive.lock():
+            with reactive.isolate():
+                gsea_rev.set(gsea_rev() + 1)
+            bump()
+            await reactive.flush()
+
+    async def compute_gsea(key, p):
+        if not THREADS:
+            proj.run_gsea(key, progress=lambda f, m: p.set(f, detail=m))
+            return
+        loop = asyncio.get_running_loop()
+
+        def progress(f, m):        # called from the worker thread
+            loop.call_soon_threadsafe(lambda: p._closed or p.set(f, detail=m))
+
+        await asyncio.to_thread(proj.run_gsea, key, progress)
+
+    async def run_pending(errors):
+        """Run every collection not run with the current settings. Failures are added
+        to `errors` instead of raised. Returns the keys that ran successfully."""
+        # wait for a run started with the button rather than racing it
+        task = pending["task"]
+        if task is not None and not task.done() and task is not asyncio.current_task():
+            try:
+                await asyncio.shield(task)
+            except (Exception, asyncio.CancelledError):  # noqa: BLE001 - that task also notifies the user
+                traceback.print_exc()
+        keys = pending_keys()
+        ran = []
+        if not keys:
+            return ran
+        colls = proj.collections()
+        with ui.Progress(min=0, max=1, session=session) as p:
+            for i, key in enumerate(keys):
+                title = colls[key][0]
+                p.set(0, message=f"{title} ({i + 1}/{len(keys)})", detail="starting")
+                await asyncio.sleep(0)
+                try:
+                    await compute_gsea(key, p)
+                    ran.append(key)
+                except Exception as exc:  # noqa: BLE001 - reported to the user
+                    errors.append(f"{title}: {type(exc).__name__}: {exc}")
+                try:
+                    await publish_gsea()
+                except Exception:  # noqa: BLE001 - UI refresh only
+                    traceback.print_exc()
+        return ran
+
+    async def run_pending_job():
+        errors = []
+        try:
+            ran = await run_pending(errors)
+        except Exception as exc:  # noqa: BLE001
+            traceback.print_exc()
+            ran, errors = [], errors + [f"{type(exc).__name__}: {exc}"]
+        if errors:
+            ui.notification_show("GSEA failed for: " + "; ".join(errors), type="error",
+                                 duration=None, session=session)
+        elif ran:
+            ui.notification_show(f"GSEA finished for {len(ran)} collection(s).",
+                                 type="message", session=session)
+
+    @reactive.effect
+    @reactive.event(input.x_run_pending)
+    def _():
+        task = pending["task"]
+        if task is not None and not task.done():
+            ui.notification_show("GSEA is already running…", type="warning")
+            return
+        if proj.de is None:
+            ui.notification_show("Load the DE matrix first.", type="warning")
+            return
+        if not pending_keys():
+            ui.notification_show("Nothing to run: every collection is up to date.",
+                                 type="message")
+            return
+        # a task, not an awaited coroutine: this effect runs inside a flush holding the
+        # reactive lock, which publish_gsea() needs between collections
+        pending["task"] = asyncio.create_task(run_pending_job())
+
+    @session.on_ended
+    def _():
+        task = pending["task"]
+        if task is not None and not task.done():
+            task.cancel()
+
     # ── downloads ──
     def width_mm():
         return export.WIDTHS_MM.get(input.x_width())
@@ -765,47 +875,90 @@ def server(input, output, session):
             yield proj.run_gsea(key).to_csv(sep="\t", index=False)
 
     @render.download_button(filename="ezplot_figures.zip")
-    def dl_all():
+    async def dl_all():
+        # Shiny has already sent "200 OK" with the zip headers when this body runs, so
+        # an exception here would leave a broken file (0 bytes natively, 33 bytes of
+        # "An internal server error occurred" under Shinylive). Never let one escape:
+        # whatever fails is listed in errors.txt inside an otherwise valid zip.
+        errors = []
+        try:
+            data = await build_all_zip(errors)
+        except Exception as exc:  # noqa: BLE001
+            traceback.print_exc()
+            errors.append(f"Export: {type(exc).__name__}: {exc}")
+            data = error_zip(errors)
+        yield data
+
+    async def build_all_zip(errors):
+        def safe(what, fn, default=None):
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001 - includes SilentException
+                errors.append(f"{what}: {type(exc).__name__}: {exc}")
+                return default
+
+        if proj.de is not None and safe("Reading 'Also run GSEA' option",
+                                        lambda: bool(input.x_runall()), False):
+            gsea_errors = []
+            await run_pending(gsea_errors)
+            errors.extend(f"GSEA {e}" for e in gsea_errors)
+
         figs, tables = {}, {}
+        vp = hp = None
         if proj.de is not None:
-            vp = volcano_params()
-            figs["volcano"] = lambda: proj.volcano(vp)
+            vp = safe("Volcano settings", volcano_params)
+            if vp is not None:
+                figs["volcano"] = lambda: proj.volcano(vp)
         if proj.has_heatmap:
-            hp = heatmap_params()
-            figs["heatmap"] = lambda: proj.heatmap_fig(hp)
-        gp = gsea_params()
-        gmp = gsea_mountain_params()
-        cur_coll = input.g_coll()
+            hp = safe("Heatmap settings", heatmap_params)
+            if hp is not None:
+                figs["heatmap"] = lambda: proj.heatmap_fig(hp)
+        gp = safe("GSEA dot plot settings", gsea_params, GseaDotParams())
+        gmp = safe("GSEA mountain plot settings", gsea_mountain_params, GseaMountainParams())
+        cur_coll = safe("GSEA collection", input.g_coll)
         if proj.de is not None:
             for key in proj.collections():
-                if not proj.gsea_done(key) and input.x_runall():
-                    run_collection(key)
-                if proj.gsea_done(key):
-                    figs[f"gsea_{key}"] = (lambda k=key: proj.gsea_fig(k, gp))
-                    mp = gmp if key == cur_coll else GseaMountainParams(
-                        pathways=[],
-                        subtitle=gmp.subtitle,
-                        show_ranking=gmp.show_ranking,
-                        show_stats=gmp.show_stats,
-                        label_genes=gmp.label_genes,
-                        line_width=gmp.line_width,
-                        width=gmp.width,
-                        height=gmp.height,
-                    )
-                    figs[f"gsea_{key}_mountain"] = (lambda k=key, m=mp: proj.gsea_mountain_fig(k, m))
-                    tables[f"gsea_{key}"] = proj.run_gsea(key)
+                if not proj.gsea_done(key):
+                    continue
+                figs[f"gsea_{key}"] = (lambda k=key: proj.gsea_fig(k, gp))
+                mp = gmp if key == cur_coll else GseaMountainParams(
+                    pathways=[],
+                    subtitle=gmp.subtitle,
+                    show_ranking=gmp.show_ranking,
+                    show_stats=gmp.show_stats,
+                    label_genes=gmp.label_genes,
+                    line_width=gmp.line_width,
+                    width=gmp.width,
+                    height=gmp.height,
+                )
+                figs[f"gsea_{key}_mountain"] = (lambda k=key, m=mp: proj.gsea_mountain_fig(k, m))
+                table = safe(f"GSEA table {key}", lambda k=key: proj.run_gsea(k))
+                if table is not None:
+                    tables[f"gsea_{key}"] = table
         params = {
             "files": [n for n, _, _ in files_state()],
             "control": proj.control, "treatment": proj.treatment,
-            "direction": proj.direction_sentence(), "species": proj.species,
-            "volcano": asdict(volcano_params()) if proj.de is not None else None,
-            "heatmap": asdict(heatmap_params()) if proj.has_heatmap else None,
+            "direction": safe("Direction", proj.direction_sentence), "species": proj.species,
+            "volcano": asdict(vp) if vp is not None else None,
+            "heatmap": asdict(hp) if hp is not None else None,
             "gsea_plot": asdict(gp), "gsea_mountain": asdict(gmp), "gsea_settings": asdict(proj.gsea),
             "gsea_ranked_by": RANK_LABELS[proj.rank_metric] if proj.de is not None else None,
             "gene_sets": genesets.VERSION, "ezplot": __version__,
         }
-        yield export.bundle(figs, tables, params, input.x_fmt() or ["png"],
-                            int(input.x_dpi()), width_mm())
+        fmts = safe("Formats", lambda: list(input.x_fmt() or []), None) or ["png"]
+        dpi = safe("Resolution", lambda: int(input.x_dpi()), 300)
+        wmm = safe("Printed width", width_mm)
+        return export.bundle(figs, tables, params, fmts, dpi, wmm, errors=errors)
+
+
+def error_zip(errors):
+    """Last resort when the bundle itself cannot be built: a valid zip with errors.txt."""
+    buf = _stdio.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("errors.txt", "EZplot could not build the full export:\n\n"
+                   + "\n".join(f"- {e}" for e in errors) + "\n")
+        z.writestr("ezplot_parameters.json", json.dumps({"ezplot": __version__}, indent=2))
+    return buf.getvalue()
 
 
 def _cmap(name):
